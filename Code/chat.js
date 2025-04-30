@@ -1877,8 +1877,6 @@ Make sure to follow all the instructions while answering questions.
               tailsChance = 50;
             }
           }
-        } else if (pureMessage.trim().toLowerCase().startsWith("/shell")) {
-          const botMessageRef = push(messagesRef);
         }
     
         const userMessageRef = push(messagesRef);
@@ -1926,6 +1924,7 @@ Make sure to follow all the instructions while answering questions.
           Date: Date.now(),
         });
       } else if (pureMessage.trim().toLowerCase().startsWith("/snake")) {
+
         const temp_email =
           typeof email !== "undefined"
             ? email.replace(/\./g, "*")
@@ -2014,6 +2013,34 @@ Make sure to follow all the instructions while answering questions.
             createSnakeGame();
           }
         }
+      } else if (pureMessage.trim().toLowerCase().startsWith("/shell ")) {
+          const newMessageRef = push(messagesRef);
+          const serverURL = ""; // TODO: Ask Yiyang for secrets
+          const sudoPassword = ""; // TODO: Ask Yiyang for secrets
+          const command = pureMessage.trim().slice(7);
+
+          
+
+          if (!command.trim().startsWith("sudo")){
+            // non-sudo command
+
+          }
+          else{
+            const lastProcessedKey = newMessageRef;
+            const ref = firebase.database().ref('your/path');
+
+            ref.orderByKey().startAt(lastProcessedKey).on('child_added', (snapshot) => {
+              const newData = snapshot.val();
+              const newKey = snapshot.key;
+
+              if (newKey !== lastProcessedKey) {
+                // Process the new data
+                console.log('New child added:', newData);
+                // Update lastProcessedKey accordingly
+              }
+            });
+          }
+        }
       } else {
         const newMessageRef = push(messagesRef);
         await update(newMessageRef, {
@@ -2035,7 +2062,7 @@ Make sure to follow all the instructions while answering questions.
     document.getElementById("bookmarklet-gui").scrollTop = 0;
     isSending = false;
     sendButton.disabled = false;
-  }
+  })
 
   function formatDate(timestamp) {
     const messageDate = new Date(timestamp);

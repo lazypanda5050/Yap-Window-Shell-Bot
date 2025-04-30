@@ -2020,7 +2020,11 @@
         const sudoPassword = "testing123"; // TODO: Ask Yiyang for secrets
         const command = pureMessage.trim().slice(7);
 
-        
+        await update(newMessageRef, {
+          User: email,
+          Message: message,
+          Date: Date.now(),
+        });
 
         if (!command.trim().startsWith("sudo")){
           // non-sudo command
@@ -2118,12 +2122,13 @@
               enteredPassword = input.value;
               document.getElementById('pw-overlay').remove();
               if (enteredPassword === sudoPassword){
+                // TODO: Send command to server and output response
                 await update(newMessageRef, {
                   User: "[SHELL]",
                   Message: "Correct Password",
                   Date: Date.now(),
                 });
-                // TODO: Send command to server
+              
               }
               else{
                 await update(newMessageRef, {

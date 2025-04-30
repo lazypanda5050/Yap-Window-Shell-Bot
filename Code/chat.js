@@ -2020,17 +2020,17 @@
         const sudoPassword = "testing123"; // TODO: Ask Yiyang for secrets
         const command = pureMessage.trim().slice(7);
 
-        await update(newMessageRef, {
-          User: email,
-          Message: message,
-          Date: Date.now(),
-        });
-
         if (!command.trim().startsWith("sudo")){
           // non-sudo command
 
         }
         else{
+          await update(newMessageRef, {
+            User: email,
+            Message: message,
+            Date: Date.now(),
+          });
+
           // Check sudo password
           (function() {
             // 1. Inject CSS styles

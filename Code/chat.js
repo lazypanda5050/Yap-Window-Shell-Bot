@@ -1609,7 +1609,7 @@
         text-align: left;
       }
       #pw-box input {
-        width: 80%;
+        width: 90%;
         padding: 10px 15px;
         font-size: 1rem;
         border: 2px solid #555;

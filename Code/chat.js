@@ -1745,28 +1745,27 @@
           .join("\n");
 
         const fullPrompt = `The following is a chat log for context. Messages from "[AI]" are past responses you have given, but you do not have memory of them.
+          Chat Log:
+          ${chatHistory}
 
-Chat Log:
-${chatHistory}
+          Here are some instructions on how to respond.
+          1. User emails that end with @lakesideschool.org are in the format xxxxy##@lakesideschoool.org, where xxxx is the user’s first name, y is the first letter of the user’s last name, and ## is the last two digits of the user’s graduation year from high school. Address users by their first name.
+          1a. Here are some name preferences you should be aware of: carolynj30@lakesideschool.org (Carolyn J.) prefers to go by Seek. conquerert30_@lakesideschool.org (Conquerer T.) prefers to go by Hengsheng.
+          1b. Here are some personal emails you should be aware of. Overall, try to figure out from the personal email what the person’s name is: reva27308@gmail.com is Reva S, aaravd037@gmail.com is Aarav D, alisofudge@gmail.com is Alice F, jarnolds723@gmail.com is Isaac W, purelyillusive@gmail.com is Max L, thescratchercat@gmail.com is Yiyang L, and w.n.lazypanda5050@gmail.com is Winston N.
+          2. Here are some restrictions that you should be aware of.
+          2a. Try to stay away from sensitive topics. Tread these carefully and gently remind users about the sensitivity of these topics if a user brings them up. For example, North Korea is a sensitive topic. Be aware of stereotypes (ex. sexism, racism, ageism) and stay away from these as well.
+          2b. Try your best to keep your answers fresh. Even if users may end up having similar or even exactly the same questions, keep your answers fresh and do not get stuck in a never-ending loop of the same response.
+          2c. Ultimately, try to use your judgement and be careful when responding. Do not do anything that is morally wrong. Use your judgement.
+          3. Some more information you should be aware of:
+          3a. Everyone’s name preferences are outlined here. Try to respect these.
+          3b. No users are related to any other users in a familial or romantic way.
+          3c. When a user asks a question, respond to the question only. Do not refer to the chat log without user request. Do not include any response of the history in your message. When referring to the chat log upon request, any messages from "[AI]" are your previous responses.
 
-Here are some instructions on how to respond.
-1. User emails that end with @lakesideschool.org are in the format xxxxy##@lakesideschoool.org, where xxxx is the user’s first name, y is the first letter of the user’s last name, and ## is the last two digits of the user’s graduation year from high school. Address users by their first name.
-1a. Here are some name preferences you should be aware of: carolynj30@lakesideschool.org (Carolyn J.) prefers to go by Seek. conquerert30_@lakesideschool.org (Conquerer T.) prefers to go by Hengsheng.
-1b. Here are some personal emails you should be aware of. Overall, try to figure out from the personal email what the person’s name is: reva27308@gmail.com is Reva S, aaravd037@gmail.com is Aarav D, alisofudge@gmail.com is Alice F, jarnolds723@gmail.com is Isaac W, purelyillusive@gmail.com is Max L, thescratchercat@gmail.com is Yiyang L, and w.n.lazypanda5050@gmail.com is Winston N.
-2. Here are some restrictions that you should be aware of.
-2a. Try to stay away from sensitive topics. Tread these carefully and gently remind users about the sensitivity of these topics if a user brings them up. For example, North Korea is a sensitive topic. Be aware of stereotypes (ex. sexism, racism, ageism) and stay away from these as well.
-2b. Try your best to keep your answers fresh. Even if users may end up having similar or even exactly the same questions, keep your answers fresh and do not get stuck in a never-ending loop of the same response.
-2c. Ultimately, try to use your judgement and be careful when responding. Do not do anything that is morally wrong. Use your judgement.
-3. Some more information you should be aware of:
-3a. Everyone’s name preferences are outlined here. Try to respect these.
-3b. No users are related to any other users in a familial or romantic way.
-3c. When a user asks a question, respond to the question only. Do not refer to the chat log without user request. Do not include any response of the history in your message. When referring to the chat log upon request, any messages from "[AI]" are your previous responses.
+          Now, respond to the user's question naturally:
+          User: ${email} asks: ${noFilesMessage}
 
-Now, respond to the user's question naturally:
-User: ${email} asks: ${noFilesMessage}
-
-Make sure to follow all the instructions while answering questions.
-`;
+          Make sure to follow all the instructions while answering questions.
+          `;
 
         let aiReply = null;
         let successfulRequest = false;
@@ -2015,104 +2014,103 @@ Make sure to follow all the instructions while answering questions.
           }
         }
       } else if (pureMessage.trim().toLowerCase().startsWith("/shell ")) {
-          const newMessageRef = push(messagesRef);
-          const serverURL = ""; // TODO: Ask Yiyang for secrets
-          const sudoPassword = "testing123"; // TODO: Ask Yiyang for secrets
-          const command = pureMessage.trim().slice(7);
+        const newMessageRef = push(messagesRef);
+        const serverURL = ""; // TODO: Ask Yiyang for secrets
+        const sudoPassword = "testing123"; // TODO: Ask Yiyang for secrets
+        const command = pureMessage.trim().slice(7);
 
-          
+        
 
-          if (!command.trim().startsWith("sudo")){
-            // non-sudo command
+        if (!command.trim().startsWith("sudo")){
+          // non-sudo command
 
-          }
-          else{
-            // Check sudo password
-            (function() {
-              // 1. Inject CSS styles
-              const css = `
-                #pw-overlay {
-                  position: fixed;
-                  top: 0; left: 0;
-                  width: 100%; height: 100%;
-                  background: rgba(0,0,0,0.75);
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                  z-index: 9999;
-                }
-                #pw-box {
-                  background: #fff;
-                  padding: 20px;
-                  border-radius: 8px;
-                  text-align: center;
-                  box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-                }
-                #pw-box input {
-                  width: 100%;
-                  padding: 8px;
-                  margin: 8px 0;
-                  font-size: 1rem;
-                }
-                #pw-box button {
-                  padding: 8px 16px;
-                  font-size: 1rem;
-                  cursor: pointer;
-                }
-              `;
-              const styleEl = document.createElement('style');
-              styleEl.textContent = css;
-              document.head.appendChild(styleEl);
+        }
+        else{
+          // Check sudo password
+          (function() {
+            // 1. Inject CSS styles
+            const css = `
+              #pw-overlay {
+                position: fixed;
+                top: 0; left: 0;
+                width: 100%; height: 100%;
+                background: rgba(0,0,0,0.75);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 9999;
+              }
+              #pw-box {
+                background: #fff;
+                padding: 20px;
+                border-radius: 8px;
+                text-align: center;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+              }
+              #pw-box input {
+                width: 100%;
+                padding: 8px;
+                margin: 8px 0;
+                font-size: 1rem;
+              }
+              #pw-box button {
+                padding: 8px 16px;
+                font-size: 1rem;
+                cursor: pointer;
+              }
+            `;
+            const styleEl = document.createElement('style');
+            styleEl.textContent = css;
+            document.head.appendChild(styleEl);
 
-              // 2. Build overlay elements
-              const overlay = document.createElement('div');
-              overlay.id = 'pw-overlay';
+            // 2. Build overlay elements
+            const overlay = document.createElement('div');
+            overlay.id = 'pw-overlay';
 
-              const box = document.createElement('div');
-              box.id = 'pw-box';
+            const box = document.createElement('div');
+            box.id = 'pw-box';
 
-              const label = document.createElement('label');
-              label.setAttribute('for', 'pw-input');
-              label.textContent = 'Enter Password:';
+            const label = document.createElement('label');
+            label.setAttribute('for', 'pw-input');
+            label.textContent = 'Enter Password:';
 
-              const input = document.createElement('input');
-              input.type = 'password';
-              input.id = 'pw-input';
+            const input = document.createElement('input');
+            input.type = 'password';
+            input.id = 'pw-input';
 
-              const button = document.createElement('button');
-              button.id = 'pw-submit';
-              button.textContent = 'Submit';
+            const button = document.createElement('button');
+            button.id = 'pw-submit';
+            button.textContent = 'Submit';
 
-              // Assemble
-              box.appendChild(label);
-              box.appendChild(input);
-              box.appendChild(button);
-              overlay.appendChild(box);
-              document.body.appendChild(overlay);
+            // Assemble
+            box.appendChild(label);
+            box.appendChild(input);
+            box.appendChild(button);
+            overlay.appendChild(box);
+            document.body.appendChild(overlay);
 
-              // 3. Handle submit
-              let enteredPassword = '';
-              button.addEventListener('click', async () => {
-                enteredPassword = input.value;
-                if (enteredPassword === sudoPassword){
-                  await update(newMessageRef, {
-                    User: "[SHELL]",
-                    Message: "Correct Password",
-                    Date: Date.now(),
-                  });
-                  // TODO: Send command to server
-                }
-                else{
-                  await update(newMessageRef, {
-                    User: "[SHELL]",
-                    Message: "Incorrect Sudo Password",
-                    Date: Date.now(),
-                  });
+            // 3. Handle submit
+            let enteredPassword = '';
+            button.addEventListener('click', async () => {
+              enteredPassword = input.value;
+              if (enteredPassword === sudoPassword){
+                await update(newMessageRef, {
+                  User: "[SHELL]",
+                  Message: "Correct Password",
+                  Date: Date.now(),
+                });
+                // TODO: Send command to server
+              }
+              else{
+                await update(newMessageRef, {
+                  User: "[SHELL]",
+                  Message: "Incorrect Sudo Password",
+                  Date: Date.now(),
+                });
 
-                }
-              });
-            })();
-          }
+              }
+            });
+          })();
         }
       } else {
         const newMessageRef = push(messagesRef);

@@ -2115,9 +2115,8 @@
             box.appendChild(button);
             overlay.appendChild(box);
             document.body.appendChild(overlay);
-          
-            // 3. Handle submit
-            let enteredPassword = '';
+          })();
+          let enteredPassword = '';
             button.addEventListener('click', async () => {
               enteredPassword = input.value;
               document.getElementById('pw-overlay').remove();
@@ -2138,7 +2137,6 @@
                 });
               }
             });
-          })();
         }
       } else {
         const newMessageRef = push(messagesRef);

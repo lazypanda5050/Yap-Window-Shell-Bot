@@ -1597,7 +1597,7 @@
         z-index: 2000001;
       }
       #pw-box {
-        width: 100%;
+        width: 90%;
         display: flex;
         flex-direction: column;
         align-items: stretch;
@@ -1724,6 +1724,22 @@
           e.target.src.split(",")[0].split(":")[1].split(";")[0],
         );
       }
+    });
+  }
+
+  function promptForPassword() {
+    return new Promise(async (resolve) => {
+      await createPasswordEntry();
+  
+      const button = document.getElementById('pw-submit');
+      const input = document.getElementById('pw-input');
+      const overlay = document.getElementById('pw-overlay');
+  
+      button.addEventListener('click', () => {
+        const enteredPassword = input.value;
+        overlay.remove();
+        resolve(enteredPassword);
+      });
     });
   }
 
@@ -2119,31 +2135,25 @@
           await createPasswordEntry();
         
           // check password
-          let enteredPassword = '';
-          let button = document.getElementById("pw-submit");
-          let input = document.getElementById("pw-input")
-          button.addEventListener('click', async () => {
-            enteredPassword = input.value;
-            document.getElementById('pw-overlay').remove();
-            if (enteredPassword === sudoPassword){
-              await update(newMessageRef, {
-                User: "[SHELL]",
-                Message: "Correct Sudo Password; Executing Command",
-                Date: Date.now(),
-              });
-              useSudo = true;
-            }
-            else{
-              await update(newMessageRef, {
-                User: "[SHELL]",
-                Message: "Incorrect Sudo Password; Executing without sudo permissions",
-                Date: Date.now(),
-              });
-              command = command.slice(5); // remove sudo
-              useSudo = true;
-            }
-          });
-        }
+          let enteredPassword = await promptForPassword();
+          if (enteredPassword === sudoPassword){
+            await update(newMessageRef, {
+              User: "[SHELL]",
+              Message: "Correct Sudo Password; Executing Command",
+              Date: Date.now(),
+            });
+            useSudo = true;
+          }
+          else{
+            await update(newMessageRef, {
+              User: "[SHELL]",
+              Message: "Incorrect Sudo Password; Executing without sudo permissions",
+              Date: Date.now(),
+            });
+            command = command.slice(5); // remove sudo
+            useSudo = false;
+          }
+        };
       } else {
         const userMessageRef = push(messagesRef);
         await update(userMessageRef, {

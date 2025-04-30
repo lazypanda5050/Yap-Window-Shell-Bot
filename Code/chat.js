@@ -266,8 +266,7 @@
     
 
     const userVersionData =
-      userVersionSnapsh\
-      t.val().replace("*", ".") || "1.0";
+      userVersionSnapshot.val().replace("*", ".") || "1.0";
     const updates = updatesSnapshot.val();
 
     const userVersion = userVersionData.split(".").map(Number);
@@ -2136,7 +2135,7 @@ Make sure to follow all the instructions while answering questions.
     document.getElementById("bookmarklet-gui").scrollTop = 0;
     isSending = false;
     sendButton.disabled = false;
-  })
+  }
 
   function formatDate(timestamp) {
     const messageDate = new Date(timestamp);

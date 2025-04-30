@@ -2142,6 +2142,14 @@
             }
           });
         }
+      } else {
+        // Handle regular message
+        const userMessageRef = push(messagesRef);
+        await update(userMessageRef, {
+          User: email,
+          Message: message,
+          Date: Date.now(),
+        });
       }
 
       const snapshot = await get(messagesRef);

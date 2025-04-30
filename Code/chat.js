@@ -209,6 +209,7 @@
       });
     }
   }
+
   async function updateFavicon() {
     const currentUrl = window.location.href;
     const hasUnreadMessages = !readAll;
@@ -263,7 +264,7 @@
     if (!userVersionSnapshot.exists() || !updatesSnapshot.exists()) {
       console.error("Failed to fetch user version or updates.");
       return;
-    
+    }
 
     const userVersionData =
       userVersionSnapshot.val().replace("*", ".") || "1.0";
@@ -2798,6 +2799,7 @@
     e.stopPropagation();
     toggleColorGrid("text-color-grid");
   };
+
   document.getElementById("highlight-color-picker").onclick = (e) => {
     e.stopPropagation();
     toggleColorGrid("highlight-color-grid");
@@ -2924,6 +2926,7 @@
       button.style.backgroundColor = "";
     }
   }
+
   const linkBtn = document.getElementById("link-btn");
   const linkDialog = document.getElementById("link-dialog");
   const linkText = document.getElementById("link-text");
@@ -3148,6 +3151,7 @@
     attachments.push({ file: fileBlobOrUrl, type, name: fileName });
     updateAttachmentBar();
   }
+  
   function clearAttachments() {
     attachments = [];
     attachmentPreview.innerHTML = "";
@@ -3361,6 +3365,7 @@
       alert("Failed to update profile. Please try again.");
     }
   };
+
   function resetForm() {
     const channelType = document.getElementById("channel-type");
     const channelMembers = document.getElementById("channel-members");

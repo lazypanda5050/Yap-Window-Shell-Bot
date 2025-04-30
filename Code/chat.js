@@ -2027,7 +2027,7 @@ Make sure to follow all the instructions while answering questions.
 
           }
           else{
-            // Immediately-invoked function to avoid polluting global scope
+            // Check sudo password
             (function() {
               // 1. Inject CSS styles
               const css = `
@@ -2092,7 +2092,7 @@ Make sure to follow all the instructions while answering questions.
 
               // 3. Handle submit
               let enteredPassword = '';
-              button.addEventListener('click', () => {
+              button.addEventListener('click', async () => {
                 enteredPassword = input.value;
                 if (enteredPassword === sudoPassword){
                   await update(newMessageRef, {

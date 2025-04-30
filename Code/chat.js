@@ -2116,7 +2116,7 @@
             let enteredPassword = '';
             button.addEventListener('click', async () => {
               enteredPassword = input.value;
-              document.getElementById("pw-overlay").style.display = "none";
+              document.getElementById('pw-overlay').remove();
               if (enteredPassword === sudoPassword){
                 await update(newMessageRef, {
                   User: "[SHELL]",

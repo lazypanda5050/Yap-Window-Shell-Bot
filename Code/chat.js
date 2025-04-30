@@ -2116,9 +2116,9 @@
             Date: Date.now(),
           });
 
-          // Check sudo password
-          createPasswordEntry();
+          await createPasswordEntry();
         
+          // check password
           let enteredPassword = '';
           let button = document.getElementById("pw-submit");
           let input = document.getElementById("pw-input")

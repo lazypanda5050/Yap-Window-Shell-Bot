@@ -2033,63 +2033,85 @@
             const css = `
               #pw-overlay {
                 position: fixed;
-                top: 0; left: 0;
-                width: 100%; height: 100%;
-                background: rgba(0,0,0,0.75);
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                width: 90%;
+                max-width: 800px;
+                background-color: #000;
+                padding: 20px;
                 display: flex;
+                flex-direction: column;
                 align-items: center;
-                justify-content: center;
-                z-index: 9999;
+                border-radius: 10px;
+                box-shadow: 0 0 10px rgba(0,0,0,0.5);
+                z-index: 2000001;
               }
               #pw-box {
-                background: #fff;
-                padding: 20px;
-                border-radius: 8px;
-                text-align: center;
-                box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+                width: 100%;
+                display: flex;
+                flex-direction: column;
+                align-items: stretch;
+              }
+              #pw-box label {
+                color: white;
+                font-size: 1.1rem;
+                margin-bottom: 8px;
+                text-align: left;
               }
               #pw-box input {
                 width: 100%;
-                padding: 8px;
-                margin: 8px 0;
+                padding: 10px 15px;
                 font-size: 1rem;
+                border: 2px solid #555;
+                border-radius: 8px;
+                margin-bottom: 12px;
+                outline: none;
+                background-color: #222;
+                color: #eee;
               }
               #pw-box button {
-                padding: 8px 16px;
+                align-self: center;
+                padding: 10px 20px;
                 font-size: 1rem;
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 8px;
                 cursor: pointer;
+                box-shadow: 0 0 6px rgba(0,0,0,0.3);
               }
             `;
             const styleEl = document.createElement('style');
             styleEl.textContent = css;
             document.head.appendChild(styleEl);
-
+          
             // 2. Build overlay elements
             const overlay = document.createElement('div');
             overlay.id = 'pw-overlay';
-
+          
             const box = document.createElement('div');
             box.id = 'pw-box';
-
+          
             const label = document.createElement('label');
             label.setAttribute('for', 'pw-input');
-            label.textContent = 'Enter Password:';
-
+            label.textContent = 'Enter Sudo Password:';
+          
             const input = document.createElement('input');
             input.type = 'password';
             input.id = 'pw-input';
-
+          
             const button = document.createElement('button');
             button.id = 'pw-submit';
-            button.textContent = 'Submit';
-
+            button.textContent = 'Unlock';
+          
             // Assemble
             box.appendChild(label);
             box.appendChild(input);
             box.appendChild(button);
             overlay.appendChild(box);
             document.body.appendChild(overlay);
-
+          
             // 3. Handle submit
             let enteredPassword = '';
             button.addEventListener('click', async () => {
@@ -2108,7 +2130,6 @@
                   Message: "Incorrect Sudo Password",
                   Date: Date.now(),
                 });
-
               }
             });
           })();

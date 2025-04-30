@@ -5,13 +5,13 @@
     gui.style.display = "flex";
   } else {
     const firebaseConfig = {
-      apiKey: "AIzaSyA48Uv_v5c7-OCnkQ8nBkjIW8MN4STDcJs",
-      authDomain: "noise-75cba.firebaseapp.com",
-      databaseURL: "https://noise-75cba-default-rtdb.firebaseio.com",
-      projectId: "noise-75cba",
-      storageBucket: "noise-75cba.appspot.com",
-      messagingSenderId: "1092146908435",
-      appId: "1:1092146908435:web:f72b90362cc86c5f83dee6",
+      apiKey: "AIzaSyDa5vR9A4q_8UQ7fS3DiNZjsAFJI3lhZ8w",
+      authDomain: "yap-window.firebaseapp.com",
+      databaseURL: "https://yap-window-default-rtdb.firebaseio.com",
+      projectId: "yap-window",
+      storageBucket: "yap-window.firebasestorage.app",
+      messagingSenderId: "8489461962",
+      appId: "1:8489461962:web:4470657ccca0cacc65ac33"
     };
 
     var database, auth, provider, email, mostRecentVersionKey;
@@ -73,7 +73,7 @@
             child,
           };
           fetch(
-            https://raw.githubusercontent.com/lazypanda5050/Yap-Window-Shell-Bot/refs/heads/main/Code/chat.js?token=$(date +%s)",
+            "https://raw.githubusercontent.com/lazypanda5050/Yap-Window-Shell-Bot/refs/heads/main/Code/chat.js?token=$(date +%s)",
           )
             .then((r) => r.text())
             .then((chatCode) => {

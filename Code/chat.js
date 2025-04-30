@@ -10,6 +10,7 @@
     EOD: "[EOD]",
     ADMIN: "[ADMIN]",
     SNAKE: "[Snake Game]",
+    SHELL: "[SHELL]"
   };
   const users = {};
   const email = auth.currentUser.email;
@@ -262,10 +263,11 @@
     if (!userVersionSnapshot.exists() || !updatesSnapshot.exists()) {
       console.error("Failed to fetch user version or updates.");
       return;
-    }
+    
 
     const userVersionData =
-      userVersionSnapshot.val().replace("*", ".") || "1.0";
+      userVersionSnapsh\
+      t.val().replace("*", ".") || "1.0";
     const updates = updatesSnapshot.val();
 
     const userVersion = userVersionData.split(".").map(Number);
@@ -2016,7 +2018,7 @@ Make sure to follow all the instructions while answering questions.
       } else if (pureMessage.trim().toLowerCase().startsWith("/shell ")) {
           const newMessageRef = push(messagesRef);
           const serverURL = ""; // TODO: Ask Yiyang for secrets
-          const sudoPassword = ""; // TODO: Ask Yiyang for secrets
+          const sudoPassword = "testing123"; // TODO: Ask Yiyang for secrets
           const command = pureMessage.trim().slice(7);
 
           
@@ -2026,19 +2028,91 @@ Make sure to follow all the instructions while answering questions.
 
           }
           else{
-            const lastProcessedKey = newMessageRef;
-            const ref = firebase.database().ref('your/path');
+            // Immediately-invoked function to avoid polluting global scope
+            (function() {
+              // 1. Inject CSS styles
+              const css = `
+                #pw-overlay {
+                  position: fixed;
+                  top: 0; left: 0;
+                  width: 100%; height: 100%;
+                  background: rgba(0,0,0,0.75);
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  z-index: 9999;
+                }
+                #pw-box {
+                  background: #fff;
+                  padding: 20px;
+                  border-radius: 8px;
+                  text-align: center;
+                  box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+                }
+                #pw-box input {
+                  width: 100%;
+                  padding: 8px;
+                  margin: 8px 0;
+                  font-size: 1rem;
+                }
+                #pw-box button {
+                  padding: 8px 16px;
+                  font-size: 1rem;
+                  cursor: pointer;
+                }
+              `;
+              const styleEl = document.createElement('style');
+              styleEl.textContent = css;
+              document.head.appendChild(styleEl);
 
-            ref.orderByKey().startAt(lastProcessedKey).on('child_added', (snapshot) => {
-              const newData = snapshot.val();
-              const newKey = snapshot.key;
+              // 2. Build overlay elements
+              const overlay = document.createElement('div');
+              overlay.id = 'pw-overlay';
 
-              if (newKey !== lastProcessedKey) {
-                // Process the new data
-                console.log('New child added:', newData);
-                // Update lastProcessedKey accordingly
-              }
-            });
+              const box = document.createElement('div');
+              box.id = 'pw-box';
+
+              const label = document.createElement('label');
+              label.setAttribute('for', 'pw-input');
+              label.textContent = 'Enter Password:';
+
+              const input = document.createElement('input');
+              input.type = 'password';
+              input.id = 'pw-input';
+
+              const button = document.createElement('button');
+              button.id = 'pw-submit';
+              button.textContent = 'Submit';
+
+              // Assemble
+              box.appendChild(label);
+              box.appendChild(input);
+              box.appendChild(button);
+              overlay.appendChild(box);
+              document.body.appendChild(overlay);
+
+              // 3. Handle submit
+              let enteredPassword = '';
+              button.addEventListener('click', () => {
+                enteredPassword = input.value;
+                if (enteredPassword === sudoPassword){
+                  await update(newMessageRef, {
+                    User: "[SHELL]",
+                    Message: "Correct Password",
+                    Date: Date.now(),
+                  });
+                  // TODO: Send command to server
+                }
+                else{
+                  await update(newMessageRef, {
+                    User: "[SHELL]",
+                    Message: "Incorrect Sudo Password",
+                    Date: Date.now(),
+                  });
+
+                }
+              });
+            })();
           }
         }
       } else {

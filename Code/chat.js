@@ -1877,8 +1877,10 @@ Make sure to follow all the instructions while answering questions.
               tailsChance = 50;
             }
           }
+        } else if (pureMessage.trim().toLowerCase().startsWith("/shell")) {
+          const botMessageRef = push(messagesRef);
         }
-
+    
         const userMessageRef = push(messagesRef);
         await update(userMessageRef, {
           User: email,

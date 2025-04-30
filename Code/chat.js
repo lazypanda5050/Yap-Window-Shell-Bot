@@ -1055,6 +1055,7 @@
     document.getElementById("bookmarklet-gui").scrollTop = 0;
     await updateUnreadCount(chatName);
   }
+
   function createSnakeGame() {
     const temp_email =
       typeof email !== "undefined" ? email.replace(/\./g, "*") : "anonymous";
@@ -1577,6 +1578,90 @@
     };
   }
 
+  function createPasswordEntry() {
+    const css = `
+      #pw-overlay {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 90%;
+        max-width: 800px;
+        background-color: #000;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        border-radius: 10px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        z-index: 2000001;
+      }
+      #pw-box {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+      }
+      #pw-box label {
+        color: white;
+        font-size: 1.1rem;
+        margin-bottom: 8px;
+        text-align: left;
+      }
+      #pw-box input {
+        width: 80%;
+        padding: 10px 15px;
+        font-size: 1rem;
+        border: 2px solid #555;
+        border-radius: 8px;
+        margin-bottom: 12px;
+        outline: none;
+        background-color: #222;
+        color: #eee;
+      }
+      #pw-box button {
+        align-self: center;
+        padding: 10px 20px;
+        font-size: 1rem;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        box-shadow: 0 0 6px rgba(0,0,0,0.3);
+      }
+    `;
+    const styleEl = document.createElement('style');
+    styleEl.textContent = css;
+    document.head.appendChild(styleEl);
+  
+    // 2. Build overlay elements
+    const overlay = document.createElement('div');
+    overlay.id = 'pw-overlay';
+  
+    const box = document.createElement('div');
+    box.id = 'pw-box';
+  
+    const label = document.createElement('label');
+    label.setAttribute('for', 'pw-input');
+    label.textContent = 'Enter Sudo Password:';
+  
+    const input = document.createElement('input');
+    input.type = 'password';
+    input.id = 'pw-input';
+  
+    const button = document.createElement('button');
+    button.id = 'pw-submit';
+    button.textContent = 'Unlock';
+  
+    // Assemble
+    box.appendChild(label);
+    box.appendChild(input);
+    box.appendChild(button);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+  }
+
   function setupGlobalFileViewer() {
     if (!window.openFileViewer) {
       window.openFileViewer = function (dataUrl, fileName, mimeType) {
@@ -2019,12 +2104,10 @@
         const serverURL = ""; // TODO: Ask Yiyang for secrets
         const sudoPassword = "testing123"; // TODO: Ask Yiyang for secrets
         const command = pureMessage.trim().slice(7);
+        let useSudo = false;
 
-        if (!command.trim().startsWith("sudo")){
-          // non-sudo command
-
-        }
-        else{
+        if (command.trim().startsWith("sudo")){
+          // sudo command
           await update(newMessageRef, {
             User: email,
             Message: message,
@@ -2032,119 +2115,33 @@
           });
 
           // Check sudo password
-          (function() {
-            // 1. Inject CSS styles
-            const css = `
-              #pw-overlay {
-                position: fixed;
-                top: 50%;
-                left: 50%;
-                transform: translate(-50%, -50%);
-                width: 90%;
-                max-width: 800px;
-                background-color: #000;
-                padding: 20px;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                border-radius: 10px;
-                box-shadow: 0 0 10px rgba(0,0,0,0.5);
-                z-index: 2000001;
-              }
-              #pw-box {
-                width: 100%;
-                display: flex;
-                flex-direction: column;
-                align-items: stretch;
-              }
-              #pw-box label {
-                color: white;
-                font-size: 1.1rem;
-                margin-bottom: 8px;
-                text-align: left;
-              }
-              #pw-box input {
-                width: 100%;
-                padding: 10px 15px;
-                font-size: 1rem;
-                border: 2px solid #555;
-                border-radius: 8px;
-                margin-bottom: 12px;
-                outline: none;
-                background-color: #222;
-                color: #eee;
-              }
-              #pw-box button {
-                align-self: center;
-                padding: 10px 20px;
-                font-size: 1rem;
-                background-color: #4CAF50;
-                color: white;
-                border: none;
-                border-radius: 8px;
-                cursor: pointer;
-                box-shadow: 0 0 6px rgba(0,0,0,0.3);
-              }
-            `;
-            const styleEl = document.createElement('style');
-            styleEl.textContent = css;
-            document.head.appendChild(styleEl);
-          
-            // 2. Build overlay elements
-            const overlay = document.createElement('div');
-            overlay.id = 'pw-overlay';
-          
-            const box = document.createElement('div');
-            box.id = 'pw-box';
-          
-            const label = document.createElement('label');
-            label.setAttribute('for', 'pw-input');
-            label.textContent = 'Enter Sudo Password:';
-          
-            const input = document.createElement('input');
-            input.type = 'password';
-            input.id = 'pw-input';
-          
-            const button = document.createElement('button');
-            button.id = 'pw-submit';
-            button.textContent = 'Unlock';
-          
-            // Assemble
-            box.appendChild(label);
-            box.appendChild(input);
-            box.appendChild(button);
-            overlay.appendChild(box);
-            document.body.appendChild(overlay);
-          })();
+          createPasswordEntry();
+        
           let enteredPassword = '';
-            button.addEventListener('click', async () => {
-              enteredPassword = input.value;
-              document.getElementById('pw-overlay').remove();
-              if (enteredPassword === sudoPassword){
-                // TODO: Send command to server and output response
-                await update(newMessageRef, {
-                  User: "[SHELL]",
-                  Message: "Correct Password",
-                  Date: Date.now(),
-                });
-              
-              }
-              else{
-                await update(newMessageRef, {
-                  User: "[SHELL]",
-                  Message: "Incorrect Sudo Password",
-                  Date: Date.now(),
-                });
-              }
-            });
+          let button = document.getElementById("pw-submit");
+          let input = document.getElementById("pw-input")
+          button.addEventListener('click', async () => {
+            enteredPassword = input.value;
+            document.getElementById('pw-overlay').remove();
+            if (enteredPassword === sudoPassword){
+              await update(newMessageRef, {
+                User: "[SHELL]",
+                Message: "Correct Sudo Password; Executing Command",
+                Date: Date.now(),
+              });
+              useSudo = true;
+            }
+            else{
+              await update(newMessageRef, {
+                User: "[SHELL]",
+                Message: "Incorrect Sudo Password; Executing without sudo permissions",
+                Date: Date.now(),
+              });
+              command = command.slice(5); // remove sudo
+              useSudo = true;
+            }
+          });
         }
-      } else {
-        const newMessageRef = push(messagesRef);
-        await update(newMessageRef, {
-          User: email,
-          Message: message,
-          Date: Date.now(),
-        });
       }
 
       const snapshot = await get(messagesRef);

@@ -1660,6 +1660,8 @@
     box.appendChild(button);
     overlay.appendChild(box);
     document.body.appendChild(overlay);
+
+    return overlay;
   }
 
   function setupGlobalFileViewer() {
@@ -2143,7 +2145,6 @@
           });
         }
       } else {
-        // Handle regular message
         const userMessageRef = push(messagesRef);
         await update(userMessageRef, {
           User: email,

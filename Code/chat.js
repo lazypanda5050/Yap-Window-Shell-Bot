@@ -1579,7 +1579,8 @@
   }
 
   function createPasswordEntry() {
-    const css = `
+    return new Promise((resolve) => {
+      const css = `
       #pw-overlay {
         position: fixed;
         top: 50%;
@@ -1630,38 +1631,39 @@
         cursor: pointer;
         box-shadow: 0 0 6px rgba(0,0,0,0.3);
       }
-    `;
-    const styleEl = document.createElement('style');
-    styleEl.textContent = css;
-    document.head.appendChild(styleEl);
-  
-    // 2. Build overlay elements
-    const overlay = document.createElement('div');
-    overlay.id = 'pw-overlay';
-  
-    const box = document.createElement('div');
-    box.id = 'pw-box';
-  
-    const label = document.createElement('label');
-    label.setAttribute('for', 'pw-input');
-    label.textContent = 'Enter Sudo Password:';
-  
-    const input = document.createElement('input');
-    input.type = 'password';
-    input.id = 'pw-input';
-  
-    const button = document.createElement('button');
-    button.id = 'pw-submit';
-    button.textContent = 'Unlock';
-  
-    // Assemble
-    box.appendChild(label);
-    box.appendChild(input);
-    box.appendChild(button);
-    overlay.appendChild(box);
-    document.body.appendChild(overlay);
+      `;
+      const styleEl = document.createElement('style');
+      styleEl.textContent = css;
+      document.head.appendChild(styleEl);
+    
+      // 2. Build overlay elements
+      const overlay = document.createElement('div');
+      overlay.id = 'pw-overlay';
+    
+      const box = document.createElement('div');
+      box.id = 'pw-box';
+    
+      const label = document.createElement('label');
+      label.setAttribute('for', 'pw-input');
+      label.textContent = 'Enter Sudo Password:';
+    
+      const input = document.createElement('input');
+      input.type = 'password';
+      input.id = 'pw-input';
+    
+      const button = document.createElement('button');
+      button.id = 'pw-submit';
+      button.textContent = 'Unlock';
+    
+      // Assemble
+      box.appendChild(label);
+      box.appendChild(input);
+      box.appendChild(button);
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
 
-    return overlay;
+      resolve(overlay);
+    });
   }
 
   function setupGlobalFileViewer() {
@@ -1729,11 +1731,9 @@
 
   function promptForPassword() {
     return new Promise(async (resolve) => {
-      await createPasswordEntry();
-  
+      const overlay = createPasswordEntry();
       const button = document.getElementById('pw-submit');
       const input = document.getElementById('pw-input');
-      const overlay = document.getElementById('pw-overlay');
   
       button.addEventListener('click', () => {
         const enteredPassword = input.value;
@@ -2124,15 +2124,19 @@
         const command = pureMessage.trim().slice(7);
         let useSudo = false;
 
-        if (command.trim().startsWith("sudo")){
+        if (command.trim() === ""){
+          await update(newMessageRef, {
+            user: "[SHELL]",
+            message: "No command detected",
+            date: Date.now()
+          })
+        } else if (command.trim().startsWith("sudo")){
           // sudo command
           await update(newMessageRef, {
             User: email,
             Message: message,
             Date: Date.now(),
           });
-
-          await createPasswordEntry();
         
           // check password
           let enteredPassword = await promptForPassword();
@@ -2143,8 +2147,7 @@
               Date: Date.now(),
             });
             useSudo = true;
-          }
-          else{
+          } else{
             await update(newMessageRef, {
               User: "[SHELL]",
               Message: "Incorrect Sudo Password; Executing without sudo permissions",
@@ -2154,6 +2157,7 @@
             useSudo = false;
           }
         };
+
       } else {
         const userMessageRef = push(messagesRef);
         await update(userMessageRef, {

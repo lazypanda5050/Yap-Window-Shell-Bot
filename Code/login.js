@@ -44,6 +44,13 @@
       database = getDatabase(app);
       auth = getAuth(app);
       provider = new GoogleAuthProvider();
+      const baseRef = ref(database, "shellFS");
+      get(baseRef).then(snap => {
+        if (!snap.exists()) {
+          // Create the base directory as an empty object
+          set(baseRef, {});
+        }
+      });
     } catch (error) {
       console.error("Error initializing Firebase:", error);
       alert("Firebase initialization failed. Check the console for details.");

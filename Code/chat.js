@@ -2313,7 +2313,7 @@
         const shell = new Shell();
 
         const userMessageRef = push(messagesRef);
-        await update(newMessageRef, {
+        await update(userMessageRef, {
           User: email,
           Message: pureMessage,
           Date: Date.now()

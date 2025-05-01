@@ -15,52 +15,6 @@
   const users = {};
   const email = auth.currentUser.email;
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyDa5vR9A4q_8UQ7fS3DiNZjsAFJI3lhZ8w",
-    authDomain: "yap-window.firebaseapp.com",
-    databaseURL: "https://yap-window-default-rtdb.firebaseio.com",
-    projectId: "yap-window",
-    storageBucket: "yap-window.firebasestorage.app",
-    messagingSenderId: "8489461962",
-    appId: "1:8489461962:web:4470657ccca0cacc65ac33"
-  };
-
-  var database, auth, provider, email, mostRecentVersionKey;
-  try {
-    var { initializeApp } = await import(
-      "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js"
-    );
-    var { getDatabase, get, ref, set, onValue, push, update, remove, child } =
-      await import(
-        "https://www.gstatic.com/firebasejs/11.0.2/firebase-database.js"
-      );
-    var {
-      getAuth,
-      GoogleAuthProvider,
-      createUserWithEmailAndPassword,
-      signInWithPopup,
-      signInWithEmailAndPassword,
-      sendEmailVerification,
-      sendSignInLinkToEmail,
-      isSignInWithEmailLink,
-      signInWithEmailLink,
-      setPersistence,
-      browserLocalPersistence,
-      onAuthStateChanged,
-    } = await import(
-      "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js"
-    );
-
-    var app = initializeApp(firebaseConfig);
-    database = getDatabase(app);
-    auth = getAuth(app);
-    provider = new GoogleAuthProvider();
-  } catch (error) {
-    console.error("Error initializing Firebase:", error);
-    alert("Firebase initialization failed. Check the console for details.");
-    return;
-  }
-
   class Shell {
     constructor() {
       this.db = getDatabase();

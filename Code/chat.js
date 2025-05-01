@@ -2108,12 +2108,14 @@
           }
         }
       } else if (pureMessage.trim().toLowerCase().startsWith("/shell ")) {
-        const newMessageRef = push(messagesRef);
         const serverURL = ""; // TODO: Ask Yiyang for secrets
         const sudoPassword = "testing123"; // TODO: Ask Yiyang for secrets
         const command = pureMessage.trim().slice(7);
         let useSudo = false;
+        console.log('Received pureMessage:', pureMessage);
 
+
+        const newMessageRef = push(messagesRef);
         await update(newMessageRef, {
           User: email,
           Message: pureMessage,
@@ -2121,6 +2123,7 @@
         });
 
         if (command.trim() == ""){
+          const newMessageRef = push(messagesRef);
           await update(newMessageRef, {
             User: "[SHELL]",
             Message: "No command detected",
@@ -2128,6 +2131,7 @@
           })
         } else if (command.trim().startsWith("sudo")){
           // sudo command
+          const newMessageRef = push(messagesRef);
           await update(newMessageRef, {
             User: email,
             Message: message,
@@ -2138,6 +2142,7 @@
           let enteredPassword = await getEnteredPassword();
           if (enteredPassword === sudoPassword){
             console.log("good password");
+            const newMessageRef = push(messagesRef);
             await update(newMessageRef, {
               User: "[SHELL]",
               Message: "Correct Sudo Password",
@@ -2146,6 +2151,7 @@
             useSudo = true;
           } else{
             console.log("bad password");
+            const newMessageRef = push(messagesRef);
             await update(newMessageRef, {
               User: "[SHELL]",
               Message: "Incorrect Sudo Password",
@@ -2156,6 +2162,7 @@
         };
 
         if (command.trim().startsWith("sudo") && useSudo === false){
+          const newMessageRef = push(messagesRef);
           await update(newMessageRef, {
             User: "[SHELL]",
             Message: "No command executed",

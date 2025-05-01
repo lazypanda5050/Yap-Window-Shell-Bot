@@ -15,6 +15,249 @@
   const users = {};
   const email = auth.currentUser.email;
 
+  const firebaseConfig = {
+    apiKey: "AIzaSyDa5vR9A4q_8UQ7fS3DiNZjsAFJI3lhZ8w",
+    authDomain: "yap-window.firebaseapp.com",
+    databaseURL: "https://yap-window-default-rtdb.firebaseio.com",
+    projectId: "yap-window",
+    storageBucket: "yap-window.firebasestorage.app",
+    messagingSenderId: "8489461962",
+    appId: "1:8489461962:web:4470657ccca0cacc65ac33"
+  };
+
+  var database, auth, provider, email, mostRecentVersionKey;
+  try {
+    var { initializeApp } = await import(
+      "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js"
+    );
+    var { getDatabase, get, ref, set, onValue, push, update, remove, child } =
+      await import(
+        "https://www.gstatic.com/firebasejs/11.0.2/firebase-database.js"
+      );
+    var {
+      getAuth,
+      GoogleAuthProvider,
+      createUserWithEmailAndPassword,
+      signInWithPopup,
+      signInWithEmailAndPassword,
+      sendEmailVerification,
+      sendSignInLinkToEmail,
+      isSignInWithEmailLink,
+      signInWithEmailLink,
+      setPersistence,
+      browserLocalPersistence,
+      onAuthStateChanged,
+    } = await import(
+      "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js"
+    );
+
+    var app = initializeApp(firebaseConfig);
+    database = getDatabase(app);
+    auth = getAuth(app);
+    provider = new GoogleAuthProvider();
+  } catch (error) {
+    console.error("Error initializing Firebase:", error);
+    alert("Firebase initialization failed. Check the console for details.");
+    return;
+  }
+
+  class Shell {
+    constructor() {
+      this.db = getDatabase();
+      this.currentPath = "/";    // always ends with no trailing slash except root
+    }
+  
+    // Helper: normalize paths, handle absolute vs. relative
+    _resolvePath(p) {
+      if (p.startsWith("/")) {
+        return p === "/" ? "/" : p.replace(/\/+$/, "");
+      }
+      const parts = this.currentPath.split("/").concat(p.split("/"));
+      const stack = [];
+      for (let part of parts) {
+        if (part === "" || part === ".") continue;
+        if (part === "..") stack.pop();
+        else stack.push(part);
+      }
+      return "/" + stack.join("/");
+    }
+  
+    // Helper: get DB ref for a given path
+    _nodeRef(path) {
+      // drop leading slash for Firebase keys
+      const key = path === "/" ? "" : path.slice(1).replace(/\//g, "_");
+      return ref(this.db, key || "/");
+    }
+  
+    // Execute a shell command string
+    async exec(cmdLine) {
+      const [ cmd, ...args ] = cmdLine.trim().split(/\s+/);
+      switch (cmd) {
+        case "ls":   return this._ls(args[0] || "");
+        case "mkdir":return this._mkdir(args[0]);
+        case "cd":   return this._cd(args[0] || "");
+        case "rm":   return this._rm(args[0]);
+        case "cat":  return this._cat(args[0]);
+        case "vim":  return this._vim(args[0]);
+        case "pwd":  return Promise.resolve(this.currentPath);
+        default:     return Promise.resolve(`shell: command not found: ${cmd}`);
+      }
+    }
+  
+    // ls [dir]
+    async _ls(dir) {
+      const path = this._resolvePath(dir || "");
+      const snap = await get(this._nodeRef(path));
+      if (!snap.exists()) return `ls: cannot access '${dir}': No such file or directory`;
+      const val = snap.val();
+      if (typeof val === "string") {
+        // it's a file
+        return dir || path.split("/").pop();
+      }
+      // directory assumed: object of children
+      return Object.keys(val).join("\t") || "";
+    }
+  
+    // mkdir <dir>
+    async _mkdir(dir) {
+      if (!dir) return `mkdir: missing operand`;
+      const path = this._resolvePath(dir);
+      const parent = path.substring(0, path.lastIndexOf("/")) || "/";
+      const name   = path.split("/").pop();
+      const parentSnap = await get(this._nodeRef(parent));
+      if (!parentSnap.exists()) return `mkdir: cannot create directory '${dir}': No such parent`;
+      const existing = parentSnap.val();
+      if (existing && existing[name]) {
+        return `mkdir: cannot create directory '${dir}': File exists`;
+      }
+      // create as empty "directory" => empty object
+      await update(this._nodeRef(parent), { [name]: {} });
+      return "";
+    }
+  
+    // cd <dir>
+    async _cd(dir) {
+      const path = this._resolvePath(dir || "");
+      const snap = await get(this._nodeRef(path));
+      if (!snap.exists()) return `cd: no such file or directory: ${dir}`;
+      if (typeof snap.val() === "string") {
+        return `cd: not a directory: ${dir}`;
+      }
+      this.currentPath = path;
+      return "";
+    }
+  
+    // rm <path>
+    async _rm(target) {
+      if (!target) return `rm: missing operand`;
+      const path = this._resolvePath(target);
+      const snap = await get(this._nodeRef(path));
+      if (!snap.exists()) return `rm: cannot remove '${target}': No such file or directory`;
+      // if directory, only allow empty
+      const val = snap.val();
+      if (typeof val === "object" && Object.keys(val).length) {
+        return `rm: cannot remove '${target}': Directory not empty`;
+      }
+      await remove(this._nodeRef(path));
+      return "";
+    }
+  
+    // cat <file>
+    async _cat(file) {
+      if (!file) return `cat: missing operand`;
+      const path = this._resolvePath(file);
+      const snap = await get(this._nodeRef(path));
+      if (!snap.exists()) return `cat: ${file}: No such file`;
+      const val = snap.val();
+      if (typeof val === "object") {
+        return `cat: ${file}: Is a directory`;
+      }
+      return val;
+    }
+  
+    // vim <file> -- opens an overlay for editing
+    _vim(file) {
+      if (!file) return Promise.resolve(`vim: missing file operand`);
+      const path = this._resolvePath(file);
+  
+      return get(this._nodeRef(path)).then(snap => {
+        const existing = (snap.exists() && typeof snap.val() === "string") ? snap.val() : "";
+        return new Promise(resolve => {
+          // Build overlay
+          const style = document.createElement("style");
+          style.textContent = `
+            #vim-overlay {
+              position: fixed; top:0; left:0; width:100%; height:100%;
+              background: rgba(0,0,0,0.85); display:flex;
+              align-items:center; justify-content:center;
+              z-index:9999;
+            }
+            #vim-box {
+              width:80%; max-width:800px; background:#111; padding:20px;
+              border-radius:8px; display:flex; flex-direction:column;
+            }
+            #vim-box textarea {
+              flex:1; background:#222; color:#eee;
+              border:none; padding:10px; font-family:monospace;
+              font-size:1rem; resize:none;
+            }
+            #vim-box .vim-controls {
+              margin-top:10px; text-align:right;
+            }
+            #vim-box button {
+              margin-left:8px; padding:6px 12px;
+              background:#4CAF50; color:#fff; border:none;
+              border-radius:4px; cursor:pointer;
+            }
+          `;
+          document.head.appendChild(style);
+  
+          const overlay = document.createElement("div");
+          overlay.id = "vim-overlay";
+          const box = document.createElement("div");
+          box.id = "vim-box";
+  
+          const ta = document.createElement("textarea");
+          ta.value = existing;
+          ta.rows = 20;
+  
+          const ctrls = document.createElement("div");
+          ctrls.className = "vim-controls";
+          const saveBtn = document.createElement("button");
+          saveBtn.textContent = "Save";
+          const cancelBtn = document.createElement("button");
+          cancelBtn.textContent = "Cancel";
+          ctrls.append(cancelBtn, saveBtn);
+  
+          box.appendChild(ta);
+          box.appendChild(ctrls);
+          overlay.appendChild(box);
+          document.body.appendChild(overlay);
+  
+          cancelBtn.addEventListener("click", () => {
+            overlay.remove();
+            style.remove();
+            resolve("Editing canceled.");
+          }, { once: true });
+  
+          saveBtn.addEventListener("click", async () => {
+            const content = ta.value;
+            try {
+              await set(this._nodeRef(path), content);
+              resolve(`File '${file}' saved.`);
+            } catch (e) {
+              console.error(e);
+              resolve(`Error saving '${file}'.`);
+            } finally {
+              overlay.remove();
+              style.remove();
+            }
+          }, { once: true });
+        });
+      });
+    }
+  }
+
   if (!auth.currentUser || !auth.currentUser.emailVerified) {
     alert("Please verify your email before using chat.");
     return;
@@ -2113,7 +2356,7 @@
         const command = pureMessage.trim().slice(7);
         let useSudo = false;
         console.log('Received pureMessage:', pureMessage);
-
+        const shell = new Shell();
 
         const newMessageRef = push(messagesRef);
         await update(newMessageRef, {
@@ -2169,6 +2412,15 @@
             Date: Date.now()
           });
         }
+
+        let response = shell.exec(command);
+
+        const newMessageRef = push(messagesRef);
+        await update(newMessageRef, {
+          User: "[SHELL]",
+          Message: response,
+          Date: Date.now()
+        });
       } else {
         const userMessageRef = push(messagesRef);
         await update(userMessageRef, {

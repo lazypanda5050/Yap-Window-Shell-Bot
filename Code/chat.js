@@ -2114,6 +2114,12 @@
         const command = pureMessage.trim().slice(7);
         let useSudo = false;
 
+        await update(newMessageRef, {
+          User: email,
+          Message: pureMessage,
+          Date: Date.now()
+        });
+
         if (command.trim() == ""){
           await update(newMessageRef, {
             User: "[SHELL]",

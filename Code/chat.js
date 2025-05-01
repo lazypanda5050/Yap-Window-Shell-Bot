@@ -65,14 +65,14 @@
       };
       const [ cmd, ...args ] = cmdLine.trim().split(/\s+/);
       switch (cmd) {
-        case "ls":   return this._ls(args[0] || "");
-        case "mkdir":return this._mkdir(args[0]);
-        case "cd":   return this._cd(args[0] || "");
-        case "rm":   return this._rm(args[0]);
-        case "cat":  return this._cat(args[0]);
-        case "vim":  return this._vim(args[0]);
-        case "pwd":  return Promise.resolve(this.currentPath);
-        default:     return Promise.resolve(`shell: command not found: ${cmd}`);
+        case "ls":   return await this._ls(args[0] || "");
+        case "mkdir":return await this._mkdir(args[0]);
+        case "cd":   return await this._cd(args[0] || "");
+        case "rm":   return await this._rm(args[0]);
+        case "cat":  return await this._cat(args[0]);
+        case "vim":  return await this._vim(args[0]);
+        case "pwd":  return await Promise.resolve(this.currentPath);
+        default:     return await Promise.resolve(`shell: command not found: ${cmd}`);
       }
     }
   

@@ -1578,7 +1578,7 @@
     };
   }
 
-  function createPasswordEntry() {
+  function getEnteredPassword() {
     return new Promise((resolve) => {
       const css = `
       #pw-overlay {
@@ -1662,7 +1662,11 @@
       overlay.appendChild(box);
       document.body.appendChild(overlay);
 
-      resolve(overlay);
+      button.addEventListener('click', () => {
+        const entered = input.value;
+        overlay.remove();
+        resolve(entered);
+      }, { once: true });
     });
   }
 
@@ -1726,20 +1730,6 @@
           e.target.src.split(",")[0].split(":")[1].split(";")[0],
         );
       }
-    });
-  }
-
-  function promptForPassword() {
-    return new Promise(async (resolve) => {
-      const overlay = createPasswordEntry();
-      const button = document.getElementById('pw-submit');
-      const input = document.getElementById('pw-input');
-  
-      button.addEventListener('click', () => {
-        const enteredPassword = input.value;
-        overlay.remove();
-        resolve(enteredPassword);
-      });
     });
   }
 
@@ -2124,7 +2114,7 @@
         const command = pureMessage.trim().slice(7);
         let useSudo = false;
 
-        if (command.trim() === ""){
+        if (command.trim() == ""){
           await update(newMessageRef, {
             user: "[SHELL]",
             message: "No command detected",
@@ -2139,24 +2129,31 @@
           });
         
           // check password
-          let enteredPassword = await promptForPassword();
+          let enteredPassword = await getEnteredPassword();
           if (enteredPassword === sudoPassword){
             await update(newMessageRef, {
               User: "[SHELL]",
-              Message: "Correct Sudo Password; Executing Command",
+              Message: "Correct Sudo Password",
               Date: Date.now(),
             });
             useSudo = true;
           } else{
             await update(newMessageRef, {
               User: "[SHELL]",
-              Message: "Incorrect Sudo Password; Executing without sudo permissions",
+              Message: "Incorrect Sudo Password",
               Date: Date.now(),
             });
-            command = command.slice(5); // remove sudo
             useSudo = false;
           }
         };
+
+        if (command.trim().startsWith("sudo") && useSudo === false){
+          await update(newMessageRef, {
+            user: "[SHELL]",
+            message: "No command executed",
+            date: Date.now()
+          });
+        }
 
       } else {
         const userMessageRef = push(messagesRef);

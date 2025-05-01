@@ -2312,7 +2312,7 @@
         console.log('Received pureMessage:', pureMessage);
         const shell = new Shell();
 
-        const newMessageRef = push(messagesRef);
+        const userMessageRef = push(messagesRef);
         await update(newMessageRef, {
           User: email,
           Message: pureMessage,
@@ -2320,36 +2320,27 @@
         });
 
         if (command.trim() == ""){
-          const newMessageRef = push(messagesRef);
-          await update(newMessageRef, {
+          const emptyMessageRef = push(messagesRef);
+          await update(emptyMessageRef, {
             User: "[SHELL]",
             Message: "No command detected",
             Date: Date.now()
           })
         } else if (command.trim().startsWith("sudo")){
-          // sudo command
-          const newMessageRef = push(messagesRef);
-          await update(newMessageRef, {
-            User: email,
-            Message: message,
-            Date: Date.now(),
-          });
-        
+          // sudo command        
           // check password
           let enteredPassword = await getEnteredPassword();
           if (enteredPassword === sudoPassword){
-            console.log("good password");
-            const newMessageRef = push(messagesRef);
-            await update(newMessageRef, {
+            const goodMessageRef = push(messagesRef);
+            await update(goodMessageRef, {
               User: "[SHELL]",
               Message: "Correct Sudo Password",
               Date: Date.now(),
             });
             useSudo = true;
           } else{
-            console.log("bad password");
-            const newMessageRef = push(messagesRef);
-            await update(newMessageRef, {
+            const badMessageRef = push(messagesRef);
+            await update(badMessageRef, {
               User: "[SHELL]",
               Message: "Incorrect Sudo Password",
               Date: Date.now(),
@@ -2359,8 +2350,8 @@
         };
 
         if (command.trim().startsWith("sudo") && useSudo === false){
-          const newMessageRef = push(messagesRef);
-          await update(newMessageRef, {
+          const nothingMessageRef = push(messagesRef);
+          await update(nothingMessageRef, {
             User: "[SHELL]",
             Message: "No command executed",
             Date: Date.now()
@@ -2369,8 +2360,8 @@
 
         let response = shell.exec(command);
 
-        const newMessageRef = push(messagesRef);
-        await update(newMessageRef, {
+        const responseMessageRef = push(messagesRef);
+        await update(responseMessageRef, {
           User: "[SHELL]",
           Message: response,
           Date: Date.now()
@@ -4016,7 +4007,7 @@
       }
     }
   }
-  
+
   document
     .getElementById("create-new-server")
     .addEventListener("click", function () {

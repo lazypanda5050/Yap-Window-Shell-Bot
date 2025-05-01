@@ -18,7 +18,22 @@
   class Shell {
     constructor() {
       this.db = getDatabase();
-      this.currentPath = "/";    // always ends with no trailing slash except root
+      this.currentPath = "/";
+      // kick off the one-time auth-ready promise
+      this._authReady = new Promise(resolve => {
+        onAuthStateChanged(getAuth(), user => {
+          resolve(user);      // resolves as soon as Auth state is known
+        });
+      });
+    }
+
+     // helper: await until Auth has loaded
+    async _waitForAuth() {
+      const user = await this._authReady;
+      if (!user) {
+        throw new Error("User must be signed in to run shell commands.");
+      }
+      return user;
     }
   
     // Helper: normalize paths, handle absolute vs. relative
@@ -45,6 +60,9 @@
   
     // Execute a shell command string
     async exec(cmdLine) {
+      if (this._waitForAuth) {
+        await this._waitForAuth();
+      };
       const [ cmd, ...args ] = cmdLine.trim().split(/\s+/);
       switch (cmd) {
         case "ls":   return this._ls(args[0] || "");
@@ -60,6 +78,9 @@
   
     // ls [dir]
     async _ls(dir) {
+      if (this._waitForAuth) {
+        await this._waitForAuth();
+      };
       const path = this._resolvePath(dir || "");
       const snap = await get(this._nodeRef(path));
       if (!snap.exists()) return `ls: cannot access '${dir}': No such file or directory`;
@@ -74,6 +95,9 @@
   
     // mkdir <dir>
     async _mkdir(dir) {
+      if (this._waitForAuth) {
+        await this._waitForAuth();
+      };
       if (!dir) return `mkdir: missing operand`;
       const path = this._resolvePath(dir);
       const parent = path.substring(0, path.lastIndexOf("/")) || "/";
@@ -91,6 +115,9 @@
   
     // cd <dir>
     async _cd(dir) {
+      if (this._waitForAuth) {
+        await this._waitForAuth();
+      };
       const path = this._resolvePath(dir || "");
       const snap = await get(this._nodeRef(path));
       if (!snap.exists()) return `cd: no such file or directory: ${dir}`;
@@ -103,6 +130,9 @@
   
     // rm <path>
     async _rm(target) {
+      if (this._waitForAuth) {
+        await this._waitForAuth();
+      };
       if (!target) return `rm: missing operand`;
       const path = this._resolvePath(target);
       const snap = await get(this._nodeRef(path));
@@ -118,6 +148,9 @@
   
     // cat <file>
     async _cat(file) {
+      if (this._waitForAuth) {
+        await this._waitForAuth();
+      };
       if (!file) return `cat: missing operand`;
       const path = this._resolvePath(file);
       const snap = await get(this._nodeRef(path));
@@ -130,85 +163,116 @@
     }
   
     // vim <file> -- opens an overlay for editing
-    _vim(file) {
-      if (!file) return Promise.resolve(`vim: missing file operand`);
+    async _vim(file) {
+      // 1. argument check
+      if (!file) {
+        return `vim: missing file operand`;
+      }
+    
+      // 2. ensure auth loaded (if you use _waitForAuth guard)
+      if (this._waitForAuth) {
+        if (this._waitForAuth) {
+        await this._waitForAuth();
+      };
+      }
+    
+      // 3. resolve the full path in your faux-fs
       const path = this._resolvePath(file);
-  
-      return get(this._nodeRef(path)).then(snap => {
-        const existing = (snap.exists() && typeof snap.val() === "string") ? snap.val() : "";
-        return new Promise(resolve => {
-          // Build overlay
-          const style = document.createElement("style");
-          style.textContent = `
-            #vim-overlay {
-              position: fixed; top:0; left:0; width:100%; height:100%;
-              background: rgba(0,0,0,0.85); display:flex;
-              align-items:center; justify-content:center;
-              z-index:9999;
-            }
-            #vim-box {
-              width:80%; max-width:800px; background:#111; padding:20px;
-              border-radius:8px; display:flex; flex-direction:column;
-            }
-            #vim-box textarea {
-              flex:1; background:#222; color:#eee;
-              border:none; padding:10px; font-family:monospace;
-              font-size:1rem; resize:none;
-            }
-            #vim-box .vim-controls {
-              margin-top:10px; text-align:right;
-            }
-            #vim-box button {
-              margin-left:8px; padding:6px 12px;
-              background:#4CAF50; color:#fff; border:none;
-              border-radius:4px; cursor:pointer;
-            }
-          `;
-          document.head.appendChild(style);
-  
-          const overlay = document.createElement("div");
-          overlay.id = "vim-overlay";
-          const box = document.createElement("div");
-          box.id = "vim-box";
-  
-          const ta = document.createElement("textarea");
-          ta.value = existing;
-          ta.rows = 20;
-  
-          const ctrls = document.createElement("div");
-          ctrls.className = "vim-controls";
-          const saveBtn = document.createElement("button");
-          saveBtn.textContent = "Save";
-          const cancelBtn = document.createElement("button");
-          cancelBtn.textContent = "Cancel";
-          ctrls.append(cancelBtn, saveBtn);
-  
-          box.appendChild(ta);
-          box.appendChild(ctrls);
-          overlay.appendChild(box);
-          document.body.appendChild(overlay);
-  
-          cancelBtn.addEventListener("click", () => {
-            overlay.remove();
-            style.remove();
-            resolve("Editing canceled.");
-          }, { once: true });
-  
-          saveBtn.addEventListener("click", async () => {
-            const content = ta.value;
-            try {
-              await set(this._nodeRef(path), content);
-              resolve(`File '${file}' saved.`);
-            } catch (e) {
-              console.error(e);
-              resolve(`Error saving '${file}'.`);
-            } finally {
-              overlay.remove();
-              style.remove();
-            }
-          }, { once: true });
-        });
+      const nodeRef = this._nodeRef(path);
+    
+      // 4. fetch existing contents (empty string if none or dir)
+      let existing = "";
+      try {
+        const snap = await get(nodeRef);
+        if (snap.exists() && typeof snap.val() === "string") {
+          existing = snap.val();
+        }
+      } catch (err) {
+        console.warn(`vim: failed to load ${file}, starting blank`, err);
+      }
+    
+      // 5. show overlay & wait for user input
+      const edited = await new Promise((resolve) => {
+        // inject styles
+        const style = document.createElement("style");
+        style.textContent = `
+          #vim-overlay {
+            position: fixed; top:0; left:0; width:100%; height:100%;
+            background: rgba(0,0,0,0.85); display:flex;
+            align-items:center; justify-content:center;
+            z-index:9999;
+          }
+          #vim-box {
+            width:80%; max-width:800px; background:#111; padding:20px;
+            border-radius:8px; display:flex; flex-direction:column;
+          }
+          #vim-box textarea {
+            flex:1; background:#222; color:#eee;
+            border:none; padding:10px; font-family:monospace;
+            font-size:1rem; resize:none;
+          }
+          #vim-box .vim-controls {
+            margin-top:10px; text-align:right;
+          }
+          #vim-box button {
+            margin-left:8px; padding:6px 12px;
+            background:#4CAF50; color:#fff; border:none;
+            border-radius:4px; cursor:pointer;
+          }
+        `;
+        document.head.appendChild(style);
+    
+        // build overlay elements
+        const overlay = document.createElement("div");
+        overlay.id = "vim-overlay";
+        const box = document.createElement("div");
+        box.id = "vim-box";
+    
+        const ta = document.createElement("textarea");
+        ta.value = existing;
+        ta.rows = 20;
+    
+        const ctrls = document.createElement("div");
+        ctrls.className = "vim-controls";
+        const saveBtn   = document.createElement("button");
+        const cancelBtn = document.createElement("button");
+        saveBtn.textContent   = "Save";
+        cancelBtn.textContent = "Cancel";
+        ctrls.append(cancelBtn, saveBtn);
+    
+        box.append(ta, ctrls);
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+    
+        // cancel handler
+        cancelBtn.addEventListener("click", () => {
+          overlay.remove();
+          style.remove();
+          resolve(null);
+        }, { once: true });
+    
+        // save handler
+        saveBtn.addEventListener("click", async () => {
+          const content = ta.value;
+          overlay.remove();
+          style.remove();
+          resolve(content);
+        }, { once: true });
       });
+    
+      // 6. handle cancel
+      if (edited === null) {
+        return `Editing canceled.`;
+      }
+    
+      // 7. save back to RTDB
+      try {
+        await set(nodeRef, edited);
+        return `File '${file}' saved.`;
+      } catch (err) {
+        console.error(`vim: error saving ${file}`, err);
+        return `Error saving '${file}'.`;
+      }
     }
   }
 

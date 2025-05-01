@@ -2116,9 +2116,9 @@
 
         if (command.trim() == ""){
           await update(newMessageRef, {
-            user: "[SHELL]",
-            message: "No command detected",
-            date: Date.now()
+            User: "[SHELL]",
+            Message: "No command detected",
+            Date: Date.now()
           })
         } else if (command.trim().startsWith("sudo")){
           // sudo command
@@ -2149,12 +2149,11 @@
 
         if (command.trim().startsWith("sudo") && useSudo === false){
           await update(newMessageRef, {
-            user: "[SHELL]",
-            message: "No command executed",
-            date: Date.now()
+            User: "[SHELL]",
+            Message: "No command executed",
+            Date: Date.now()
           });
         }
-
       } else {
         const userMessageRef = push(messagesRef);
         await update(userMessageRef, {

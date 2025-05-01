@@ -4016,6 +4016,7 @@
       }
     }
   }
+  
   document
     .getElementById("create-new-server")
     .addEventListener("click", function () {

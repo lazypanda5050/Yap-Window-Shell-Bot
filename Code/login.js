@@ -14,7 +14,7 @@
       appId: "1:8489461962:web:4470657ccca0cacc65ac33"
     };
 
-    var database, auth, provider, email, mostRecentVersionKey;
+    var database, auth, provider, mostRecentVersionKey;
     try {
       var { initializeApp } = await import(
         "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js"

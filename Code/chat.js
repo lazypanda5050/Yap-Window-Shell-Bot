@@ -818,12 +818,12 @@
         const account = accounts[formattedEmail];
         const lastInteract = account.LastInteract || 0;
         const username = account.Username || "Unknown";
-        const email = formattedEmail.replace(/\*/g, ".");
+        const emailA = formattedEmail.replace(/\*/g, ".");
         const timeDiff = currentTime - lastInteract;
 
         const userInfo = {
           username,
-          email,
+          emailA,
           lastInteract,
         };
 
@@ -2656,13 +2656,13 @@
       const matches = [];
 
       accountSnapshot.forEach((child) => {
-        const email = child.key.replace(/\*/g, ".");
+        const emailS = child.key.replace(/\*/g, ".");
         const username = child.val().Username;
         if (
           email.toLowerCase().includes(query) ||
           (username && username.toLowerCase().includes(query))
         ) {
-          matches.push({ email, username: username || email });
+          matches.push({ emailS, username: username || emailS });
         }
       });
 

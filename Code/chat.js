@@ -13,7 +13,7 @@
     SHELL: "[SHELL]"
   };
   const users = {};
-  const email = auth.currentUser.email;
+  const email = await auth.currentUser.email;
 
   class Shell {
     constructor() {

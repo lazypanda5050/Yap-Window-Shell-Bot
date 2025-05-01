@@ -19,28 +19,23 @@
     constructor() {
       this.db = getDatabase();
       this.currentPath = "/";
-      // kick off the one-time auth-ready promise
+      // One-time promise that resolves when Auth state is known
       this._authReady = new Promise(resolve => {
-        onAuthStateChanged(getAuth(), user => {
-          resolve(user);      // resolves as soon as Auth state is known
-        });
+        onAuthStateChanged(getAuth(), user => resolve(user));
       });
     }
 
-     // helper: await until Auth has loaded
+    // Ensure Auth has loaded and user is signed in
     async _waitForAuth() {
       const user = await this._authReady;
-      if (!user) {
-        throw new Error("User must be signed in to run shell commands.");
-      }
+      if (!user) throw new Error("User must be signed in to run shell commands.");
+      this.user = user;
       return user;
     }
-  
-    // Helper: normalize paths, handle absolute vs. relative
+
+    // Normalize paths (absolute vs. relative, ., ..)
     _resolvePath(p) {
-      if (p.startsWith("/")) {
-        return p === "/" ? "/" : p.replace(/\/+$/, "");
-      }
+      if (p.startsWith("/")) return p === "/" ? "/" : p.replace(/\/+$/, "");
       const parts = this.currentPath.split("/").concat(p.split("/"));
       const stack = [];
       for (let part of parts) {
@@ -50,94 +45,87 @@
       }
       return "/" + stack.join("/");
     }
-  
-    // Helper: get DB ref for a given path
+
+    // Map a shell path to a Firebase key path
     _nodeRef(path) {
-      // drop leading slash for Firebase keys
       const key = path === "/" ? "" : path.slice(1).replace(/\//g, "_");
       return ref(this.db, key || "/");
     }
-  
-    // Execute a shell command string
+
+    // ENTRY POINT: execute a command string
     async exec(cmdLine) {
-      if (this._waitForAuth) {
-        await this._waitForAuth();
-      };
+      await this._waitForAuth();
       const [ cmd, ...args ] = cmdLine.trim().split(/\s+/);
       switch (cmd) {
-        case "ls":   return await this._ls(args[0] || "");
-        case "mkdir":return await this._mkdir(args[0]);
-        case "cd":   return await this._cd(args[0] || "");
-        case "rm":   return await this._rm(args[0]);
-        case "cat":  return await this._cat(args[0]);
-        case "vim":  return await this._vim(args[0]);
-        case "pwd":  return await Promise.resolve(this.currentPath);
-        default:     return await Promise.resolve(`shell: command not found: ${cmd}`);
+        case "ls":    return this._ls(args[0] || "");
+        case "mkdir": return this._mkdir(args[0]);
+        case "cd":    return this._cd(args[0] || "");
+        case "rm":    return this._rm(args[0]);
+        case "cat":   return this._cat(args[0]);
+        case "vim":   return this._vim(args[0]);
+        case "pwd":   return Promise.resolve(this.currentPath);
+        default:      return Promise.resolve(`shell: command not found: ${cmd}`);
       }
     }
-  
-    // ls [dir]
+
+    // List directory or file
     async _ls(dir) {
-      if (this._waitForAuth) {
-        await this._waitForAuth();
-      };
-      const path = this._resolvePath(dir || "");
+      await this._waitForAuth();
+      const path = this._resolvePath(dir);
       const snap = await get(this._nodeRef(path));
-      if (!snap.exists()) return `ls: cannot access '${dir}': No such file or directory`;
+      if (!snap.exists()) {
+        return `ls: cannot access '${dir}': No such file or directory`;
+      }
       const val = snap.val();
       if (typeof val === "string") {
-        // it's a file
         return dir || path.split("/").pop();
       }
-      // directory assumed: object of children
       return Object.keys(val).join("\t") || "";
     }
-  
-    // mkdir <dir>
+
+    // Make directory
     async _mkdir(dir) {
-      if (this._waitForAuth) {
-        await this._waitForAuth();
-      };
+      await this._waitForAuth();
       if (!dir) return `mkdir: missing operand`;
       const path = this._resolvePath(dir);
       const parent = path.substring(0, path.lastIndexOf("/")) || "/";
       const name   = path.split("/").pop();
       const parentSnap = await get(this._nodeRef(parent));
-      if (!parentSnap.exists()) return `mkdir: cannot create directory '${dir}': No such parent`;
+      if (!parentSnap.exists()) {
+        return `mkdir: cannot create directory '${dir}': No such parent`;
+      }
       const existing = parentSnap.val();
       if (existing && existing[name]) {
         return `mkdir: cannot create directory '${dir}': File exists`;
       }
-      // create as empty "directory" => empty object
       await update(this._nodeRef(parent), { [name]: {} });
       return "";
     }
-  
-    // cd <dir>
+
+    // Change directory
     async _cd(dir) {
-      if (this._waitForAuth) {
-        await this._waitForAuth();
-      };
-      const path = this._resolvePath(dir || "");
+      await this._waitForAuth();
+      const path = this._resolvePath(dir);
       const snap = await get(this._nodeRef(path));
-      if (!snap.exists()) return `cd: no such file or directory: ${dir}`;
+      if (!snap.exists()) {
+        return `cd: no such file or directory: ${dir}`;
+      }
       if (typeof snap.val() === "string") {
         return `cd: not a directory: ${dir}`;
       }
       this.currentPath = path;
       return "";
     }
-  
-    // rm <path>
+
+    // Remove file or empty directory
     async _rm(target) {
-      if (this._waitForAuth) {
-        await this._waitForAuth();
-      };
+      await this._waitForAuth();
       if (!target) return `rm: missing operand`;
       const path = this._resolvePath(target);
       const snap = await get(this._nodeRef(path));
-      if (!snap.exists()) return `rm: cannot remove '${target}': No such file or directory`;
-      // if directory, only allow empty
+      if (!snap.exists()) {
+        return `rm: cannot remove '${target}': No such file or directory`;
+      }
       const val = snap.val();
       if (typeof val === "object" && Object.keys(val).length) {
         return `rm: cannot remove '${target}': Directory not empty`;
@@ -145,42 +133,31 @@
       await remove(this._nodeRef(path));
       return "";
     }
-  
-    // cat <file>
+
+    // Concatenate and display file
     async _cat(file) {
-      if (this._waitForAuth) {
-        await this._waitForAuth();
-      };
+      await this._waitForAuth();
       if (!file) return `cat: missing operand`;
       const path = this._resolvePath(file);
       const snap = await get(this._nodeRef(path));
-      if (!snap.exists()) return `cat: ${file}: No such file`;
+      if (!snap.exists()) {
+        return `cat: ${file}: No such file`;
+      }
       const val = snap.val();
       if (typeof val === "object") {
         return `cat: ${file}: Is a directory`;
       }
       return val;
     }
-  
-    // vim <file> -- opens an overlay for editing
+
+    // Edit file with overlay, then save
     async _vim(file) {
-      // 1. argument check
-      if (!file) {
-        return `vim: missing file operand`;
-      }
-    
-      // 2. ensure auth loaded (if you use _waitForAuth guard)
-      if (this._waitForAuth) {
-        if (this._waitForAuth) {
-        await this._waitForAuth();
-      };
-      }
-    
-      // 3. resolve the full path in your faux-fs
+      await this._waitForAuth();
+      if (!file) return `vim: missing file operand`;
       const path = this._resolvePath(file);
       const nodeRef = this._nodeRef(path);
-    
-      // 4. fetch existing contents (empty string if none or dir)
+
+      // Load existing content
       let existing = "";
       try {
         const snap = await get(nodeRef);
@@ -188,12 +165,11 @@
           existing = snap.val();
         }
       } catch (err) {
-        console.warn(`vim: failed to load ${file}, starting blank`, err);
+        console.warn(`vim: failed to load ${file}`, err);
       }
-    
-      // 5. show overlay & wait for user input
-      const edited = await new Promise((resolve) => {
-        // inject styles
+
+      // Show overlay and wait for user input
+      const edited = await new Promise(resolve => {
         const style = document.createElement("style");
         style.textContent = `
           #vim-overlay {
@@ -221,51 +197,47 @@
           }
         `;
         document.head.appendChild(style);
-    
-        // build overlay elements
+
         const overlay = document.createElement("div");
         overlay.id = "vim-overlay";
         const box = document.createElement("div");
         box.id = "vim-box";
-    
+
         const ta = document.createElement("textarea");
         ta.value = existing;
         ta.rows = 20;
-    
+
         const ctrls = document.createElement("div");
         ctrls.className = "vim-controls";
-        const saveBtn   = document.createElement("button");
+        const saveBtn = document.createElement("button");
+        saveBtn.textContent = "Save";
         const cancelBtn = document.createElement("button");
-        saveBtn.textContent   = "Save";
         cancelBtn.textContent = "Cancel";
         ctrls.append(cancelBtn, saveBtn);
-    
+
         box.append(ta, ctrls);
         overlay.appendChild(box);
         document.body.appendChild(overlay);
-    
-        // cancel handler
+
         cancelBtn.addEventListener("click", () => {
           overlay.remove();
           style.remove();
           resolve(null);
         }, { once: true });
-    
-        // save handler
-        saveBtn.addEventListener("click", async () => {
+
+        saveBtn.addEventListener("click", () => {
           const content = ta.value;
           overlay.remove();
           style.remove();
           resolve(content);
         }, { once: true });
       });
-    
-      // 6. handle cancel
+
       if (edited === null) {
         return `Editing canceled.`;
       }
-    
-      // 7. save back to RTDB
+
+      // Save edited content
       try {
         await set(nodeRef, edited);
         return `File '${file}' saved.`;

@@ -2137,6 +2137,7 @@
           // check password
           let enteredPassword = await getEnteredPassword();
           if (enteredPassword === sudoPassword){
+            console.log("good password");
             await update(newMessageRef, {
               User: "[SHELL]",
               Message: "Correct Sudo Password",
@@ -2144,6 +2145,7 @@
             });
             useSudo = true;
           } else{
+            console.log("bad password");
             await update(newMessageRef, {
               User: "[SHELL]",
               Message: "Incorrect Sudo Password",

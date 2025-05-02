@@ -85,7 +85,14 @@
       if (typeof val === "string") {
         return dir || path.split("/").pop();
       }
-      return Object.keys(val).join("\t") || "";
+      const entries = Object.entries(val || {});
+      if (entries.length === 0) return "(empty)";
+      const lines = entries.map(([key, value]) => {
+        const isDir = typeof value === "object";
+        const icon = isDir ? "📁" : "📄";
+        return `<div>${icon} <strong>${key}</strong></div>`;
+      });
+      return lines.join("");
     }
   
     async _mkdir(dir) {

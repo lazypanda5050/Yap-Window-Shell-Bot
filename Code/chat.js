@@ -2348,7 +2348,7 @@
         const command = pureMessage.trim().slice(7);
         let useSudo = false;
         console.log('Received pureMessage:', pureMessage);
-        const shell = new Shell(database);
+        const shell = await new Shell(database);
 
         const userMessageRef = push(messagesRef);
         await update(userMessageRef, {

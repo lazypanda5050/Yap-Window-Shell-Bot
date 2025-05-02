@@ -15,6 +15,7 @@
   const users = {};
   const email = await auth.currentUser.email;
   console.log(auth.currentUser.emailVerified);
+  console.log(auth.currentUser);
 
   class Shell {
     constructor() {

@@ -80,8 +80,8 @@
     async exec(cmdLine) {
       await this._waitForAuth();
       const [ cmd, ...args ] = cmdLine.trim().split(/\s+/);
+      await console.log("switching");
       switch (cmd) {
-        console.log("switching");
         case "ls":    return this._ls(args[0] || "");
         case "mkdir": return this._mkdir(args[0]);
         case "cd":    return this._cd(args[0] || "");

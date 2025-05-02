@@ -33,10 +33,28 @@
   
     // ▶ Guard: ensure a signed-in user before any DB op
     async _waitForAuth() {
+      // 1. Wait for the initial auth state
       const user = await this._authReady;
-      if (!user) throw new Error("Must be signed in to use shell");
+    
+      // 2. Ensure someone is signed in
+      if (!user) {
+        throw new Error("Must be signed in to use shell");
+      }
+    
+      // 3. Refresh the user record so `emailVerified` is accurate
+      await user.reload();                        // Reloads user data from Firebase :contentReference[oaicite:1]{index=1}
+    
+      // 4. Force-refresh the ID token so the new email_verified claim is sent
+      await user.getIdToken(true);                // True forces a new token :contentReference[oaicite:2]{index=2}
+    
+      // 5. Verify the email is actually confirmed
+      if (!user.emailVerified) {
+        throw new Error("You must verify your email before using the shell");
+      }
+    
       return user;
     }
+    
   
     // ▶ Normalize absolute/relative paths
     _resolvePath(p) {

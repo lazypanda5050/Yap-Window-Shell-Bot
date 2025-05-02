@@ -18,45 +18,21 @@
   await console.log(auth.currentUser);
 
   class Shell {
-    constructor() {
-      // ▶ Use the already-initialized globals instead of re-importing or calling getDatabase()
-      this.db          = database;
-      this.auth        = auth;
-      this.basePath    = "shellFS";
+    constructor(database) {
+      this.db = database;
+      this.basePath = "shellFS";
       this.currentPath = "/";
-  
-      // one-time promise to know when auth state is ready
-      this._authReady = new Promise(resolve => {
-        onAuthStateChanged(this.auth, user => resolve(user));
+      this._authReady = new Promise((resolve) => {
+        onAuthStateChanged(getAuth(), (user) => resolve(user));
       });
     }
   
-    // ▶ Guard: ensure a signed-in user before any DB op
     async _waitForAuth() {
-      // 1. Wait for the initial auth state
       const user = await this._authReady;
-    
-      // 2. Ensure someone is signed in
-      if (!user) {
-        throw new Error("Must be signed in to use shell");
-      }
-    
-      // 3. Refresh the user record so `emailVerified` is accurate
-      await user.reload();                        // Reloads user data from Firebase :contentReference[oaicite:1]{index=1}
-    
-      // 4. Force-refresh the ID token so the new email_verified claim is sent
-      await user.getIdToken(true);                // True forces a new token :contentReference[oaicite:2]{index=2}
-    
-      // 5. Verify the email is actually confirmed
-      if (!user.emailVerified) {
-        throw new Error("You must verify your email before using the shell");
-      }
-    
+      if (!user) throw new Error("Must be signed in");
       return user;
     }
-    
   
-    // ▶ Normalize absolute/relative paths
     _resolvePath(p) {
       if (p.startsWith("/")) return p === "/" ? "/" : p.replace(/\/+$/, "");
       const parts = this.currentPath.split("/").concat(p.split("/"));
@@ -69,35 +45,37 @@
       return "/" + stack.join("/");
     }
   
-    // ▶ Map to your /shellFS namespace in RTDB
     _nodeRef(path) {
       const innerKey = path === "/" ? "" : path.slice(1).replace(/\//g, "_");
-      const fullKey  = this.basePath + (innerKey ? `/${innerKey}` : "");
+      const fullKey = `${this.basePath}${innerKey ? `/${innerKey}` : ""}`;
       return ref(this.db, fullKey);
     }
   
-    // ▶ Main entrypoint
     async exec(cmdLine) {
       await this._waitForAuth();
-      const [ cmd, ...args ] = cmdLine.trim().split(/\s+/);
-      await console.log("switching");
+      const [cmd, ...args] = cmdLine.trim().split(/\s+/);
       switch (cmd) {
-        case "ls":    return this._ls(args[0] || "");
-        case "mkdir": return this._mkdir(args[0]);
-        case "cd":    return this._cd(args[0] || "");
-        case "rm":    return this._rm(args[0]);
-        case "cat":   return this._cat(args[0]);
-        case "vim":   return this._vim(args[0]);
-        case "pwd":   return Promise.resolve(this.currentPath);
-        default:      return Promise.resolve(`shell: command not found: ${cmd}`);
+        case "ls":
+          return this._ls(args[0] || "");
+        case "mkdir":
+          return this._mkdir(args[0]);
+        case "cd":
+          return this._cd(args[0] || "");
+        case "rm":
+          return this._rm(args[0]);
+        case "cat":
+          return this._cat(args[0]);
+        case "vim":
+          return this._vim(args[0]);
+        case "pwd":
+          return Promise.resolve(this.currentPath);
+        default:
+          return Promise.resolve(`shell: command not found: ${cmd}`);
       }
     }
   
-    // ▶ List
     async _ls(dir) {
-      console.log('waiting');
       await this._waitForAuth();
-      console.log('waited')
       const path = this._resolvePath(dir);
       const snap = await get(this._nodeRef(path));
       if (!snap.exists()) {
@@ -110,13 +88,12 @@
       return Object.keys(val).join("\t") || "";
     }
   
-    // ▶ Mkdir
     async _mkdir(dir) {
       await this._waitForAuth();
       if (!dir) return `mkdir: missing operand`;
-      const path       = this._resolvePath(dir);
+      const path = this._resolvePath(dir);
       const parentPath = path.substring(0, path.lastIndexOf("/")) || "/";
-      const name       = path.split("/").pop();
+      const name = path.split("/").pop();
       const parentSnap = await get(this._nodeRef(parentPath));
       if (!parentSnap.exists()) {
         return `mkdir: cannot create directory '${dir}': No such parent`;
@@ -129,7 +106,6 @@
       return "";
     }
   
-    // ▶ Cd
     async _cd(dir) {
       await this._waitForAuth();
       const path = this._resolvePath(dir);
@@ -144,7 +120,6 @@
       return "";
     }
   
-    // ▶ Rm
     async _rm(target) {
       await this._waitForAuth();
       if (!target) return `rm: missing operand`;
@@ -161,7 +136,6 @@
       return "";
     }
   
-    // ▶ Cat
     async _cat(file) {
       await this._waitForAuth();
       if (!file) return `cat: missing operand`;
@@ -177,12 +151,11 @@
       return val;
     }
   
-    // ▶ Vim (async overlay)
     async _vim(file) {
       await this._waitForAuth();
       if (!file) return `vim: missing file operand`;
   
-      const path    = this._resolvePath(file);
+      const path = this._resolvePath(file);
       const nodeRef = this._nodeRef(path);
   
       let existing = "";
@@ -190,13 +163,72 @@
         const snap = await get(nodeRef);
         if (snap.exists() && typeof snap.val() === "string") {
           existing = snap.val();
+        } else if (!snap.exists()) {
+          // Create an empty file if it doesn't exist
+          await set(nodeRef, "");
         }
-      } catch (_) {}
+      } catch (_) {
+        // Handle errors if necessary
+      }
   
-      const edited = await new Promise(resolve => {
-        // build overlay (styles & DOM)…
-        // saveBtn resolves content, cancelBtn resolves null
-        // (reuse your existing overlay code here)
+      const edited = await new Promise((resolve) => {
+        // Create overlay elements
+        const overlay = document.createElement("div");
+        overlay.style.position = "fixed";
+        overlay.style.top = "0";
+        overlay.style.left = "0";
+        overlay.style.width = "100vw";
+        overlay.style.height = "100vh";
+        overlay.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
+        overlay.style.display = "flex";
+        overlay.style.justifyContent = "center";
+        overlay.style.alignItems = "center";
+        overlay.style.zIndex = "1000";
+  
+        const editorContainer = document.createElement("div");
+        editorContainer.style.backgroundColor = "white";
+        editorContainer.style.padding = "20px";
+        editorContainer.style.borderRadius = "8px";
+        editorContainer.style.width = "80%";
+        editorContainer.style.maxWidth = "800px";
+        editorContainer.style.boxShadow = "0 0 10px rgba(0, 0, 0, 0.3)";
+        editorContainer.style.display = "flex";
+        editorContainer.style.flexDirection = "column";
+  
+        const textarea = document.createElement("textarea");
+        textarea.style.width = "100%";
+        textarea.style.height = "400px";
+        textarea.value = existing;
+  
+        const buttonContainer = document.createElement("div");
+        buttonContainer.style.display = "flex";
+        buttonContainer.style.justifyContent = "flex-end";
+        buttonContainer.style.marginTop = "10px";
+  
+        const saveBtn = document.createElement("button");
+        saveBtn.textContent = "Save";
+        saveBtn.style.marginRight = "10px";
+  
+        const cancelBtn = document.createElement("button");
+        cancelBtn.textContent = "Cancel";
+  
+        buttonContainer.appendChild(saveBtn);
+        buttonContainer.appendChild(cancelBtn);
+        editorContainer.appendChild(textarea);
+        editorContainer.appendChild(buttonContainer);
+        overlay.appendChild(editorContainer);
+        document.body.appendChild(overlay);
+  
+        saveBtn.addEventListener("click", () => {
+          const content = textarea.value;
+          document.body.removeChild(overlay);
+          resolve(content);
+        });
+  
+        cancelBtn.addEventListener("click", () => {
+          document.body.removeChild(overlay);
+          resolve(null);
+        });
       });
   
       if (edited === null) {
@@ -210,6 +242,7 @@
       }
     }
   }
+  
 
   if (!auth.currentUser || !auth.currentUser.emailVerified) {
     alert("Please verify your email before using chat.");

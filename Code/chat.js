@@ -74,7 +74,9 @@
   
     // ▶ List
     async _ls(dir) {
+      console.log('waiting');
       await this._waitForAuth();
+      console.log('waited')
       const path = this._resolvePath(dir);
       const snap = await get(this._nodeRef(path));
       if (!snap.exists()) {

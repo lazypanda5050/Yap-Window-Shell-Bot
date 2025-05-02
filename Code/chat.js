@@ -18,13 +18,14 @@
   await console.log(auth.currentUser);
 
   class Shell {
-    constructor(database) {
+    constructor(database, auth) {
       this.db = database;
+      this.auth = auth;
       this.basePath = "shellFS";
       this.currentPath = "/";
-      this._authReady = new Promise((resolve) => {
-        onAuthStateChanged(getAuth(), (user) => resolve(user));
-      });
+      this._authReady = new Promise(res =>
+        onAuthStateChanged(this.auth, user => res(user))
+      );
     }
   
     async _waitForAuth() {
@@ -55,25 +56,18 @@
       await this._waitForAuth();
       const [cmd, ...args] = cmdLine.trim().split(/\s+/);
       switch (cmd) {
-        case "ls":
-          return this._ls(args[0] || "");
-        case "mkdir":
-          return this._mkdir(args[0]);
-        case "cd":
-          return this._cd(args[0] || "");
-        case "rm":
-          return this._rm(args[0]);
-        case "cat":
-          return this._cat(args[0]);
-        case "vim":
-          return this._vim(args[0]);
-        case "pwd":
-          return Promise.resolve(this.currentPath);
-        default:
-          return Promise.resolve(`shell: command not found: ${cmd}`);
+        case "ls":    return this._ls(args[0] || "");
+        case "mkdir": return this._mkdir(args[0]);
+        case "cd":    return this._cd(args[0] || "");
+        case "rm":    return this._rm(args[0]);
+        case "cat":   return this._cat(args[0]);
+        case "vim":   return this._vim(args[0]);
+        case "pwd":   return Promise.resolve(this.currentPath);
+        default:      return Promise.resolve(`shell: command not found: ${cmd}`);
       }
     }
   
+    // Modified ls: lists filenames/dirs, never file contents
     async _ls(dir) {
       await this._waitForAuth();
       const path = this._resolvePath(dir);
@@ -82,17 +76,19 @@
         return `ls: cannot access '${dir}': No such file or directory`;
       }
       const val = snap.val();
+      // If this node is a file, just return its name
       if (typeof val === "string") {
-        return dir || path.split("/").pop();
+        const name = dir || path.split("/").pop();
+        return `<div>📄 <strong>${name}</strong></div>`;
       }
-      const entries = Object.entries(val || {});
-      if (entries.length === 0) return "(empty)";
-      const lines = entries.map(([key, value]) => {
-        const isDir = typeof value === "object";
-        const icon = isDir ? "📁" : "📄";
-        return `<div>${icon} <strong>${key}</strong></div>`;
-      });
-      return lines.join("");
+      // Directory: list children
+      const entries = Object.keys(val);
+      if (entries.length === 0) {
+        return `<div>(empty)</div>`;
+      }
+      return entries
+        .map(name => `<div>📁 <strong>${name}</strong></div>`)
+        .join("");
     }
   
     async _mkdir(dir) {
@@ -2348,7 +2344,7 @@
         const command = pureMessage.trim().slice(7);
         let useSudo = false;
         console.log('Received pureMessage:', pureMessage);
-        const shell = await new Shell(database);
+        const shell = await new Shell(database, auth);
 
         const userMessageRef = push(messagesRef);
         await update(userMessageRef, {

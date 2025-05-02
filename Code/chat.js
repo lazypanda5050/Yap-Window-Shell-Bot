@@ -81,6 +81,7 @@
       await this._waitForAuth();
       const [ cmd, ...args ] = cmdLine.trim().split(/\s+/);
       switch (cmd) {
+        console.log("switching");
         case "ls":    return this._ls(args[0] || "");
         case "mkdir": return this._mkdir(args[0]);
         case "cd":    return this._cd(args[0] || "");
@@ -2303,7 +2304,6 @@
           }
         }
       } else if (pureMessage.trim().toLowerCase().startsWith("/shell ")) {
-        const serverURL = ""; // TODO: Ask Yiyang for secrets
         const sudoPassword = "testing123"; // TODO: Ask Yiyang for secrets
         const command = pureMessage.trim().slice(7);
         let useSudo = false;

@@ -2356,7 +2356,7 @@
           });
         }
 
-        let response = shell.exec(command);
+        let response = await shell.exec(command);
 
         const responseMessageRef = push(messagesRef);
         await update(responseMessageRef, {

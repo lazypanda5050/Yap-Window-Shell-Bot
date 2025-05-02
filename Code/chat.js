@@ -19,11 +19,11 @@
 
   class Shell {
     constructor(database, auth) {
-      this.db = database;
-      this.auth = auth;
-      this.basePath = "shellFS";
+      this.db          = database;
+      this.auth        = auth;
+      this.basePath    = "shellFS";
       this.currentPath = "/";
-      this._authReady = new Promise(res =>
+      this._authReady  = new Promise(res =>
         onAuthStateChanged(this.auth, user => res(user))
       );
     }
@@ -32,6 +32,16 @@
       const user = await this._authReady;
       if (!user) throw new Error("Must be signed in");
       return user;
+    }
+  
+    /** Convert user-visible filename → DB key */
+    _keyFromName(name) {
+      return name.replace(/\./g, "\\period");
+    }
+  
+    /** Convert DB key → user-visible filename */
+    _nameFromKey(key) {
+      return key.replace(/\\period/g, ".");
     }
   
     _resolvePath(p) {
@@ -46,10 +56,14 @@
       return "/" + stack.join("/");
     }
   
+    /** Always prefix with shellFS, then use key names */
     _nodeRef(path) {
-      const innerKey = path === "/" ? "" : path.slice(1).replace(/\//g, "_");
-      const fullKey = `${this.basePath}${innerKey ? `/${innerKey}` : ""}`;
-      return ref(this.db, fullKey);
+      // e.g. "/my.file/doc.txt" → ["my\periodfile","doc\periodtxt"]
+      const parts = path === "/" 
+        ? [] 
+        : path.slice(1).split("/").map(this._keyFromName);
+      const fullPath = [this.basePath].concat(parts).join("/");
+      return ref(this.db, fullPath);
     }
   
     async exec(cmdLine) {
@@ -67,7 +81,6 @@
       }
     }
   
-    // Modified ls: lists filenames/dirs, never file contents
     async _ls(dir) {
       await this._waitForAuth();
       const path = this._resolvePath(dir);
@@ -76,36 +89,36 @@
         return `ls: cannot access '${dir}': No such file or directory`;
       }
       const val = snap.val();
-      // If this node is a file, just return its name
+      // If it's a file, show its name
       if (typeof val === "string") {
         const name = dir || path.split("/").pop();
-        return `<div>📄 <strong>${name}</strong></div>`;
+        return `<div>📄 <strong>${this._nameFromKey(name)}</strong></div>`;
       }
-      // Directory: list children
+      // Otherwise it's a directory: list child keys
       const entries = Object.keys(val);
       if (entries.length === 0) {
         return `<div>(empty)</div>`;
       }
       return entries
-        .map(name => `<div>📁 <strong>${name}</strong></div>`)
+        .map(k => `<div>📁 <strong>${this._nameFromKey(k)}</strong></div>`)
         .join("");
     }
   
     async _mkdir(dir) {
       await this._waitForAuth();
       if (!dir) return `mkdir: missing operand`;
-      const path = this._resolvePath(dir);
+      const path       = this._resolvePath(dir);
       const parentPath = path.substring(0, path.lastIndexOf("/")) || "/";
-      const name = path.split("/").pop();
+      const nameKey    = this._keyFromName(path.split("/").pop());
       const parentSnap = await get(this._nodeRef(parentPath));
       if (!parentSnap.exists()) {
         return `mkdir: cannot create directory '${dir}': No such parent`;
       }
-      const existing = parentSnap.val();
-      if (existing && existing[name]) {
+      const existing = parentSnap.val() || {};
+      if (existing[nameKey]) {
         return `mkdir: cannot create directory '${dir}': File exists`;
       }
-      await update(this._nodeRef(parentPath), { [name]: {} });
+      await update(this._nodeRef(parentPath), { [nameKey]: {} });
       return "";
     }
   
@@ -158,7 +171,7 @@
       await this._waitForAuth();
       if (!file) return `vim: missing file operand`;
   
-      const path = this._resolvePath(file);
+      const path    = this._resolvePath(file);
       const nodeRef = this._nodeRef(path);
   
       let existing = "";
@@ -167,71 +180,65 @@
         if (snap.exists() && typeof snap.val() === "string") {
           existing = snap.val();
         } else if (!snap.exists()) {
-          // Create an empty file if it doesn't exist
+          // create empty file
           await set(nodeRef, "");
         }
-      } catch (_) {
-        // Handle errors if necessary
-      }
+      } catch (_) {}
   
-      const edited = await new Promise((resolve) => {
-        // Create overlay elements
+      const edited = await new Promise(resolve => {
+        // overlay container
         const overlay = document.createElement("div");
-        overlay.style.position = "fixed";
-        overlay.style.top = "0";
-        overlay.style.left = "0";
-        overlay.style.width = "100vw";
-        overlay.style.height = "100vh";
-        overlay.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
-        overlay.style.display = "flex";
-        overlay.style.justifyContent = "center";
-        overlay.style.alignItems = "center";
-        overlay.style.zIndex = "1000";
+        overlay.id = "vim-overlay";
+        Object.assign(overlay.style, {
+          position: "fixed", top: 0, left: 0,
+          width: "100vw", height: "100vh",
+          backgroundColor: "rgba(0,0,0,0.8)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          zIndex: 9999
+        });
   
-        const editorContainer = document.createElement("div");
-        editorContainer.style.backgroundColor = "white";
-        editorContainer.style.padding = "20px";
-        editorContainer.style.borderRadius = "8px";
-        editorContainer.style.width = "80%";
-        editorContainer.style.maxWidth = "800px";
-        editorContainer.style.boxShadow = "0 0 10px rgba(0, 0, 0, 0.3)";
-        editorContainer.style.display = "flex";
-        editorContainer.style.flexDirection = "column";
+        const box = document.createElement("div");
+        box.id = "vim-box";
+        Object.assign(box.style, {
+          width: "80%", maxWidth: "800px", backgroundColor: "#111",
+          padding: "20px", borderRadius: "8px", display: "flex",
+          flexDirection: "column"
+        });
   
-        const textarea = document.createElement("textarea");
-        textarea.style.width = "100%";
-        textarea.style.height = "400px";
-        textarea.value = existing;
+        const ta = document.createElement("textarea");
+        ta.value = existing;
+        Object.assign(ta.style, {
+          flex: "1", backgroundColor: "#222", color: "#eee",
+          border: "none", padding: "10px", fontFamily: "monospace",
+          fontSize: "1rem", resize: "none"
+        });
   
-        const buttonContainer = document.createElement("div");
-        buttonContainer.style.display = "flex";
-        buttonContainer.style.justifyContent = "flex-end";
-        buttonContainer.style.marginTop = "10px";
+        const ctrls = document.createElement("div");
+        ctrls.className = "vim-controls";
+        ctrls.style.textAlign = "right";
+        ctrls.style.marginTop = "10px";
   
         const saveBtn = document.createElement("button");
         saveBtn.textContent = "Save";
-        saveBtn.style.marginRight = "10px";
-  
         const cancelBtn = document.createElement("button");
         cancelBtn.textContent = "Cancel";
+        saveBtn.style.marginRight = "8px";
   
-        buttonContainer.appendChild(saveBtn);
-        buttonContainer.appendChild(cancelBtn);
-        editorContainer.appendChild(textarea);
-        editorContainer.appendChild(buttonContainer);
-        overlay.appendChild(editorContainer);
+        ctrls.append(cancelBtn, saveBtn);
+        box.append(ta, ctrls);
+        overlay.appendChild(box);
         document.body.appendChild(overlay);
   
-        saveBtn.addEventListener("click", () => {
-          const content = textarea.value;
-          document.body.removeChild(overlay);
-          resolve(content);
-        });
-  
         cancelBtn.addEventListener("click", () => {
-          document.body.removeChild(overlay);
+          overlay.remove();
           resolve(null);
-        });
+        }, { once: true });
+  
+        saveBtn.addEventListener("click", () => {
+          const content = ta.value;
+          overlay.remove();
+          resolve(content);
+        }, { once: true });
       });
   
       if (edited === null) {
@@ -239,12 +246,13 @@
       }
       try {
         await set(nodeRef, edited);
-        return `File '${file}' saved.`;
+        return `File '${this._nameFromKey(path.split("/").pop())}' saved.`;
       } catch (e) {
         return `Error saving '${file}'.`;
       }
     }
   }
+  
   
 
   if (!auth.currentUser || !auth.currentUser.emailVerified) {

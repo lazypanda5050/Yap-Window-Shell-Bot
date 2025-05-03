@@ -18,29 +18,44 @@
 
   class Shell {
     constructor(database, auth) {
-      this.db           = database;
-      this.auth         = auth;
-      this.basePath     = "shellFS";
-      this.currentPath  = "/";
-      this._authReady   = new Promise(res =>
+      this.db          = database;
+      this.auth        = auth;
+      this.basePath    = "shellFS";
+      this.cwdKey      = "cwd";      // top-level DB key for working dir
+      this.currentPath = "/";        // in-memory fallback
+  
+      // Promise that resolves once we know the auth state
+      this._authReady  = new Promise(res =>
         onAuthStateChanged(this.auth, user => res(user))
       );
     }
   
+    // Ensure user is signed in
     async _waitForAuth() {
       const user = await this._authReady;
       if (!user) throw new Error("Must be signed in");
       return user;
     }
   
-    _keyFromName(name) {
-      return name.replace(/\./g, "\\period");
+    // Load cwd from the database
+    async initCwd() {
+      await this._waitForAuth();
+      const snap = await get(ref(this.db, this.cwdKey));
+      if (snap.exists() && typeof snap.val() === "string") {
+        this.currentPath = snap.val();
+      } else {
+        // write initial '/'
+        await set(ref(this.db, this.cwdKey), "/");
+        this.currentPath = "/";
+      }
     }
   
-    _nameFromKey(key) {
-      return key.replace(/\\period/g, ".");
+    // Persist cwd to the database
+    async _saveCwd() {
+      await set(ref(this.db, this.cwdKey), this.currentPath);
     }
   
+    // Normalize ., .., absolute vs relative
     _resolvePath(p) {
       if (p.startsWith("/")) return p === "/" ? "/" : p.replace(/\/+$/, "");
       const parts = this.currentPath.split("/").concat(p.split("/"));
@@ -53,6 +68,15 @@
       return "/" + stack.join("/");
     }
   
+    // Escape '.' as '\period' for DB keys
+    _keyFromName(name) {
+      return name.replace(/\./g, "\\period");
+    }
+    _nameFromKey(key) {
+      return key.replace(/\\period/g, ".");
+    }
+  
+    // Map a shell path under /shellFS
     _nodeRef(path) {
       const parts = path === "/"
         ? []
@@ -61,155 +85,123 @@
       return ref(this.db, fullKey);
     }
   
+    // Main entry: ensure auth, ensure cwd loaded, then dispatch
     async exec(cmdLine) {
       await this._waitForAuth();
+      // on first exec, load cwd
+      if (!this._cwdInitialized) {
+        await this.initCwd();
+        this._cwdInitialized = true;
+      }
+  
       const [ cmd, ...args ] = cmdLine.trim().split(/\s+/);
       switch (cmd) {
-        case "ls":
-          return await this._ls(args[0] || "");
-        case "file":
-          return await this._file(args[0]);
-        case "mkdir":
-          return await this._mkdir(args[0]);
-        case "cd":
-          return await this._cd(args[0] || "");
-        case "rm":
-          // support `rm -r target`
-          if (args[0] === "-r") {
-            return await this._rm(args[1], true);
-          } else {
-            return await this._rm(args[0], false);
-          }
-        case "cat":
-          return await this._cat(args[0]);
-        case "vim":
-          return await this._vim(args[0]);
-        case "pwd":
-          return Promise.resolve(this.currentPath);
-        default:
-          return `shell: command not found: ${cmd}`;
+        case "ls":    return this._ls(args[0] || "");
+        case "file":  return this._file(args[0]);
+        case "mkdir": return this._mkdir(args[0]);
+        case "cd":    return this._cd(args[0] || "");
+        case "rm":    
+          if (args[0] === "-r") return this._rm(args[1], true);
+          else                  return this._rm(args[0], false);
+        case "cat":   return this._cat(args[0]);
+        case "vim":   return this._vim(args[0]);
+        case "pwd":   return Promise.resolve(this.currentPath);
+        default:      return `shell: command not found: ${cmd}`;
       }
     }
   
-    // Enhanced ls: distinguishes files vs directories
+    // List contents or show file
     async _ls(dir) {
-      await this._waitForAuth();
-  
-      // Resolve and fetch the node
       const path = this._resolvePath(dir);
       const snap = await get(this._nodeRef(path));
       if (!snap.exists()) {
         return `ls: cannot access '${dir}': No such file or directory`;
       }
       const val = snap.val();
-  
-      // If this node is a file, show it
       if (typeof val === "string") {
-        const name = dir || path.split("/").pop();
-        return `📄 ${this._nameFromKey(name)}`;
+        return `📄 ${dir || this._nameFromKey(path.split("/").pop())}`;
       }
-  
-      // Otherwise it's a directory: inspect each child
-      const childKeys = Object.keys(val);
-      if (childKeys.length === 0) {
-        return `(empty directory)`;
-      }
-  
-      // For each child key, fetch its snapshot to check type
-      const lines = await Promise.all(childKeys.map(async key => {
-        const childName = this._nameFromKey(key);
+      const keys = Object.keys(val);
+      if (!keys.length) return `(empty directory)`;
+      // distinguish each child by checking its type
+      const lines = await Promise.all(keys.map(async key => {
+        const name = this._nameFromKey(key);
         const childPath = path === "/"
-          ? `/${childName}`
-          : `${path}/${childName}`;
-        const childSnap = await get(this._nodeRef(childPath));
-        if (childSnap.exists() && typeof childSnap.val() === "string") {
-          return `📄 ${childName}`;
-        } else {
-          return `📁 ${childName}`;
-        }
+            ? `/${name}`
+            : `${path}/${name}`;
+        const csnap = await get(this._nodeRef(childPath));
+        return (csnap.exists() && typeof csnap.val() === "string")
+          ? `📄 ${name}`
+          : `📁 ${name}`;
       }));
-  
       return lines.join("\n");
     }
   
-    // Report type
+    // file command
     async _file(target) {
-      await this._waitForAuth();
       if (!target) return `file: missing operand`;
       const path = this._resolvePath(target);
       const snap = await get(this._nodeRef(path));
       if (!snap.exists()) {
         return `file: ${target}: No such file or directory`;
       }
-      const val = snap.val();
-      return (typeof val === "string")
+      return (typeof snap.val() === "string")
         ? `📄 '${target}' is a file`
         : `📁 '${target}' is a directory`;
     }
   
-    // Make directory w/ placeholder
+    // mkdir with placeholder
     async _mkdir(dir) {
-      await this._waitForAuth();
       if (!dir) return `mkdir: missing operand`;
-      const path       = this._resolvePath(dir);
-      const parentPath = path.substring(0, path.lastIndexOf("/")) || "/";
-      const nameKey    = this._keyFromName(path.split("/").pop());
-      const parentSnap = await get(this._nodeRef(parentPath));
-      if (!parentSnap.exists()) {
+      const path = this._resolvePath(dir);
+      const parent = path.substring(0, path.lastIndexOf("/")) || "/";
+      const nameKey = this._keyFromName(path.split("/").pop());
+      const psnap = await get(this._nodeRef(parent));
+      if (!psnap.exists()) {
         return `mkdir: cannot create '${dir}': No such parent directory`;
       }
-      const existing = parentSnap.val() || {};
+      const existing = psnap.val() || {};
       if (existing[nameKey]) {
         return `mkdir: cannot create '${dir}': Already exists`;
       }
       // create directory with placeholder
-      await update(this._nodeRef(parentPath), {
-        [nameKey]: {
-          [this._keyFromName("DONOTDELETE")]: "NODELETE"
-        }
+      await update(this._nodeRef(parent), {
+        [nameKey]: { [this._keyFromName("DONOTDELETE")]: "NODELETE" }
       });
       return `Directory '${dir}' created`;
     }
   
-     // Change directory
-  async _cd(dir) {
-    await this._waitForAuth();
-    if (!dir) return `cd: missing operand`;
-
-    // 1. Resolve the new absolute path
-    const newPath = this._resolvePath(dir);
-
-    // 2. Check it exists and is a directory
-    const snap = await get(this._nodeRef(newPath));
-    if (!snap.exists()) {
-      return `cd: no such file or directory: ${dir}`;
+    // cd and persist cwd
+    async _cd(dir) {
+      if (!dir) return `cd: missing operand`;
+      const newPath = this._resolvePath(dir);
+      const snap = await get(this._nodeRef(newPath));
+      if (!snap.exists()) {
+        return `cd: no such file or directory: ${dir}`;
+      }
+      if (typeof snap.val() === "string") {
+        return `cd: not a directory: ${dir}`;
+      }
+      this.currentPath = newPath;
+      await this._saveCwd();
+      return `Changed directory to '${newPath}'`;
     }
-    if (typeof snap.val() === "string") {
-      return `cd: not a directory: ${dir}`;
-    }
-    // 3. **Assign** the resolved path to currentPath
-    this.currentPath = newPath;
-    return `Changed directory to '${newPath}'`;
-  }
   
-    // Remove file or directory, optionally recursive
-    async _rm(target, recursive = false) {
-      await this._waitForAuth();
+    // rm with optional recursion
+    async _rm(target, recursive=false) {
       if (!target) return `rm: missing operand`;
       const path = this._resolvePath(target);
-      const node = this._nodeRef(path);
-      const snap = await get(node);
+      const snap = await get(this._nodeRef(path));
       if (!snap.exists()) {
         return `rm: cannot remove '${target}': No such file or directory`;
       }
       const val = snap.val();
       const isDir = typeof val === "object";
       if (isDir && !recursive) {
-        const children = Object.keys(val);
-        if (children.length) {
+        if (Object.keys(val).length) {
           return `rm: cannot remove '${target}': Directory not empty (use -r)`;
         }
-        await remove(node);
+        await remove(this._nodeRef(path));
         return `Removed directory '${target}'`;
       }
       if (isDir && recursive) {
@@ -217,50 +209,46 @@
         return `Recursively removed directory '${target}'`;
       }
       // file
-      await remove(node);
+      await remove(this._nodeRef(path));
       return `Removed file '${target}'`;
     }
   
-    // Helper for recursive removal
+    // helper for recursive rm
     async _rmRecursive(path) {
-      const node = this._nodeRef(path);
-      const snap = await get(node);
+      const snap = await get(this._nodeRef(path));
       if (!snap.exists()) return;
       const val = snap.val();
       if (typeof val === "object") {
         for (let key of Object.keys(val)) {
-          const childName = this._nameFromKey(key);
-          const childPath = path === "/"
-            ? `/${childName}`
-            : `${path}/${childName}`;
-          await this._rmRecursive(childPath);
+          const name = this._nameFromKey(key);
+          const child = path === "/" ? `/${name}` : `${path}/${name}`;
+          await this._rmRecursive(child);
         }
       }
-      await remove(node);
+      await remove(this._nodeRef(path));
     }
   
-    // Display file contents
+    // cat file
     async _cat(file) {
-      await this._waitForAuth();
       if (!file) return `cat: missing operand`;
       const path = this._resolvePath(file);
       const snap = await get(this._nodeRef(path));
       if (!snap.exists()) {
         return `cat: ${file}: No such file`;
       }
-      const val = snap.val();
-      if (typeof val === "object") {
+      if (typeof snap.val() === "object") {
         return `cat: ${file}: Is a directory`;
       }
-      return val || "";
+      return snap.val();
     }
   
-    // Edit with overlay
+    // vim editor
     async _vim(file) {
-      await this._waitForAuth();
       if (!file) return `vim: missing file operand`;
-      const path    = this._resolvePath(file);
+      const path = this._resolvePath(file);
       const nodeRef = this._nodeRef(path);
+  
+      // load or create
       let existing = "";
       const snap = await get(nodeRef);
       if (snap.exists()) {
@@ -268,7 +256,9 @@
       } else {
         await set(nodeRef, "");
       }
-      const edited = await new Promise(resolve => {
+  
+      // overlay
+      const edited = await new Promise(res => {
         const overlay = document.createElement("div");
         Object.assign(overlay.style, {
           position: "fixed", inset: 0,
@@ -278,36 +268,32 @@
         });
         const box = document.createElement("div");
         Object.assign(box.style, {
-          width: "80%", maxWidth: "800px",
-          background: "#111", padding: "20px", borderRadius: "8px",
-          display: "flex", flexDirection: "column"
+          width: "80%", maxWidth: "800px", background:"#111",
+          padding:"20px", borderRadius:"8px",
+          display:"flex", flexDirection:"column"
         });
         const ta = document.createElement("textarea");
         ta.value = existing;
         Object.assign(ta.style, {
-          flex: "1", background: "#222", color: "#eee",
-          border: "none", padding: "10px", fontFamily: "monospace",
-          fontSize: "1rem", resize: "none"
+          flex:"1", background:"#222", color:"#eee",
+          border:"none", padding:"10px", fontFamily:"monospace",
+          resize:"none"
         });
         const ctrls = document.createElement("div");
-        ctrls.style.textAlign = "right";
-        ctrls.style.marginTop = "10px";
-        const saveBtn = document.createElement("button");
-        saveBtn.textContent = "Save"; saveBtn.style.marginRight = "8px";
-        const cancelBtn = document.createElement("button");
-        cancelBtn.textContent = "Cancel";
-        saveBtn.onclick = () => { overlay.remove(); resolve(ta.value); };
-        cancelBtn.onclick = () => { overlay.remove(); resolve(null); };
-        ctrls.append(cancelBtn, saveBtn);
-        box.append(ta, ctrls);
-        overlay.append(box);
-        document.body.appendChild(overlay);
+        ctrls.style.textAlign = "right"; ctrls.style.marginTop="10px";
+        const save = document.createElement("button"); save.textContent="Save";
+        const cancel = document.createElement("button"); cancel.textContent="Cancel";
+        save.onclick = ()=>{ overlay.remove(); res(ta.value); };
+        cancel.onclick = ()=>{ overlay.remove(); res(null); };
+        ctrls.append(cancel, save); box.append(ta, ctrls);
+        overlay.append(box); document.body.appendChild(overlay);
       });
+  
       if (edited === null) return `Editing canceled.`;
       await set(nodeRef, edited);
       return `File '${file}' saved.`;
     }
-  }  
+  } 
 
   if (!auth.currentUser || !auth.currentUser.emailVerified) {
     alert("Please verify your email before using chat.");

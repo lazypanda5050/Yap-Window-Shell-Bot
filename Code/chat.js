@@ -71,17 +71,30 @@
     async exec(cmdLine) {
       await this._waitForAuth();
       const [ cmd, ...args ] = cmdLine.trim().split(/\s+/);
-  
       switch (cmd) {
-        case "ls":    return this._ls(args[0] || "");
-        case "file":  return this._file(args[0]);
-        case "mkdir": return this._mkdir(args[0]);
-        case "cd":    return this._cd(args[0] || "");
-        case "rm":    return this._rm(args[0], args.includes("-r"));
-        case "cat":   return this._cat(args[0]);
-        case "vim":   return this._vim(args[0]);
-        case "pwd":   return Promise.resolve(this.currentPath);
-        default:      return `shell: command not found: ${cmd}`;
+        case "ls":
+          return await this._ls(args[0] || "");
+        case "file":
+          return await this._file(args[0]);
+        case "mkdir":
+          return await this._mkdir(args[0]);
+        case "cd":
+          return await this._cd(args[0] || "");
+        case "rm":
+          // support `rm -r target`
+          if (args[0] === "-r") {
+            return await this._rm(args[1], true);
+          } else {
+            return await this._rm(args[0], false);
+          }
+        case "cat":
+          return await this._cat(args[0]);
+        case "vim":
+          return await this._vim(args[0]);
+        case "pwd":
+          return Promise.resolve(this.currentPath);
+        default:
+          return `shell: command not found: ${cmd}`;
       }
     }
   
@@ -94,16 +107,14 @@
         return `ls: cannot access '${dir}': No such file or directory`;
       }
       const val = snap.val();
-      // File
+      // File: show 📄
       if (typeof val === "string") {
         const name = dir || path.split("/").pop();
         return `📄 ${this._nameFromKey(name)}`;
       }
-      // Directory
+      // Directory: show children with 📁
       const keys = Object.keys(val);
-      if (!keys.length) {
-        return `(empty directory)`;
-      }
+      if (!keys.length) return `(empty directory)`;
       return keys
         .map(k => `📁 ${this._nameFromKey(k)}`)
         .join("\n");
@@ -150,71 +161,55 @@
   
     // Change directory
     async _cd(dir) {
-      if (!dir) return `cd: missing operand`;
       await this._waitForAuth();
-  
-      // resolve relative to currentPath
-      const newPath = this._resolvePath(dir);
-      const snap    = await get(this._nodeRef(newPath));
-  
-      if (!snap.exists()) {
-        return `cd: no such file or directory: ${dir}`;
-      }
+      if (!dir) return `cd: missing operand`;
+      const path = this._resolvePath(dir);
+      const snap = await get(this._nodeRef(path));
+      if (!snap.exists()) return `cd: no such file or directory: ${dir}`;
       if (typeof snap.val() === "string") {
         return `cd: not a directory: ${dir}`;
       }
-  
-      // **Actual state change**
-      this.currentPath = newPath;
-      return `Changed directory to '${newPath}'`;
+      this.currentPath = path; // actually update
+      return `Changed directory to '${dir}'`;
     }
   
-    // Remove file or empty directory
+    // Remove file or directory, optionally recursive
     async _rm(target, recursive = false) {
-      if (!target) return `rm: missing operand`;
       await this._waitForAuth();
-  
+      if (!target) return `rm: missing operand`;
       const path = this._resolvePath(target);
       const node = this._nodeRef(path);
       const snap = await get(node);
-  
       if (!snap.exists()) {
         return `rm: cannot remove '${target}': No such file or directory`;
       }
-  
       const val = snap.val();
       const isDir = typeof val === "object";
-  
       if (isDir && !recursive) {
         const children = Object.keys(val);
         if (children.length) {
           return `rm: cannot remove '${target}': Directory not empty (use -r)`;
         }
-        // empty dir: safe to delete
         await remove(node);
         return `Removed directory '${target}'`;
       }
-  
       if (isDir && recursive) {
-        // recursively delete all children
         await this._rmRecursive(path);
         return `Recursively removed directory '${target}'`;
       }
-  
       // file
       await remove(node);
       return `Removed file '${target}'`;
     }
-
+  
+    // Helper for recursive removal
     async _rmRecursive(path) {
       const node = this._nodeRef(path);
       const snap = await get(node);
       if (!snap.exists()) return;
       const val = snap.val();
       if (typeof val === "object") {
-        // delete children first
         for (let key of Object.keys(val)) {
-          // reconstruct child path: replace \period back to .
           const childName = this._nameFromKey(key);
           const childPath = path === "/"
             ? `/${childName}`
@@ -222,7 +217,6 @@
           await this._rmRecursive(childPath);
         }
       }
-      // then delete self
       await remove(node);
     }
   
@@ -239,7 +233,7 @@
       if (typeof val === "object") {
         return `cat: ${file}: Is a directory`;
       }
-      return val || ""; // empty file returns empty string
+      return val || "";
     }
   
     // Edit with overlay
@@ -248,8 +242,6 @@
       if (!file) return `vim: missing file operand`;
       const path    = this._resolvePath(file);
       const nodeRef = this._nodeRef(path);
-  
-      // load or create
       let existing = "";
       const snap = await get(nodeRef);
       if (snap.exists()) {
@@ -257,8 +249,6 @@
       } else {
         await set(nodeRef, "");
       }
-  
-      // overlay
       const edited = await new Promise(resolve => {
         const overlay = document.createElement("div");
         Object.assign(overlay.style, {
@@ -277,7 +267,8 @@
         ta.value = existing;
         Object.assign(ta.style, {
           flex: "1", background: "#222", color: "#eee",
-          border: "none", padding: "10px", fontFamily: "monospace", resize: "none"
+          border: "none", padding: "10px", fontFamily: "monospace",
+          fontSize: "1rem", resize: "none"
         });
         const ctrls = document.createElement("div");
         ctrls.style.textAlign = "right";
@@ -286,29 +277,18 @@
         saveBtn.textContent = "Save"; saveBtn.style.marginRight = "8px";
         const cancelBtn = document.createElement("button");
         cancelBtn.textContent = "Cancel";
-        saveBtn.onclick = () => {
-          document.body.removeChild(overlay);
-          resolve(ta.value);
-        };
-        cancelBtn.onclick = () => {
-          document.body.removeChild(overlay);
-          resolve(null);
-        };
+        saveBtn.onclick = () => { overlay.remove(); resolve(ta.value); };
+        cancelBtn.onclick = () => { overlay.remove(); resolve(null); };
         ctrls.append(cancelBtn, saveBtn);
         box.append(ta, ctrls);
         overlay.append(box);
         document.body.appendChild(overlay);
       });
-  
       if (edited === null) return `Editing canceled.`;
       await set(nodeRef, edited);
       return `File '${file}' saved.`;
     }
-  }
-  
-  
-  
-  
+  }  
 
   if (!auth.currentUser || !auth.currentUser.emailVerified) {
     alert("Please verify your email before using chat.");

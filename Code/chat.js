@@ -64,11 +64,29 @@
   
     async exec(cmdLine) {
       await this._waitForAuth();
-      const [cmd, ...args] = cmdLine.trim().split(/\s+/);
+      const [ cmd, ...args ] = cmdLine.trim().split(/\s+/);
       switch (cmd) {
         case "ls":
           return await this._ls(args[0] || "");
-        // other cases unchanged...
+        case "file":
+          return await this._file(args[0]);
+        case "mkdir":
+          return await this._mkdir(args[0]);
+        case "cd":
+          return await this._cd(args[0] || "");
+        case "rm":
+          // support `rm -r target`
+          if (args[0] === "-r") {
+            return await this._rm(args[1], true);
+          } else {
+            return await this._rm(args[0], false);
+          }
+        case "cat":
+          return await this._cat(args[0]);
+        case "vim":
+          return await this._vim(args[0]);
+        case "pwd":
+          return Promise.resolve(this.currentPath);
         default:
           return `shell: command not found: ${cmd}`;
       }

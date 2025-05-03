@@ -28,20 +28,24 @@
       );
     }
   
+    // Wait until auth is loaded
     async _waitForAuth() {
       const user = await this._authReady;
       if (!user) throw new Error("Must be signed in");
       return user;
     }
   
+    // Replace . with \period for keys
     _keyFromName(name) {
       return name.replace(/\./g, "\\period");
     }
   
+    // Reverse
     _nameFromKey(key) {
       return key.replace(/\\period/g, ".");
     }
   
+    // Normalize ., .., absolute vs relative
     _resolvePath(p) {
       if (p.startsWith("/")) return p === "/" ? "/" : p.replace(/\/+$/, "");
       const parts = this.currentPath.split("/").concat(p.split("/"));
@@ -54,30 +58,34 @@
       return "/" + stack.join("/");
     }
   
+    // Map shell path to RTDB ref under basePath
     _nodeRef(path) {
       const parts = path === "/"
         ? []
         : path.slice(1).split("/").map(this._keyFromName);
-      const fullPath = [this.basePath, ...parts].join("/");
-      return ref(this.db, fullPath);
+      const fullKey = [this.basePath, ...parts].join("/");
+      return ref(this.db, fullKey);
     }
   
+    // Main dispatcher
     async exec(cmdLine) {
       await this._waitForAuth();
-      const [cmd, ...args] = cmdLine.trim().split(/\s+/);
+      const [ cmd, ...args ] = cmdLine.trim().split(/\s+/);
       switch (cmd) {
-        case "ls":    return this._ls(args[0] || "");
-        case "file":  return this._file(args[0]);
-        case "mkdir": return this._mkdir(args[0]);
-        case "cd":    return this._cd(args[0] || "");
-        case "rm":    return this._rm(args[0]);
-        case "cat":   return this._cat(args[0]);
-        case "vim":   return this._vim(args[0]);
+        case "ls":    return await this._ls(args[0] || "");
+        case "file":  return await this._file(args[0]);
+        case "mkdir": return await this._mkdir(args[0]);
+        case "cd":    return await this._cd(args[0] || "");
+        case "rm":    return await this._rm(args[0]);
+        case "cat":   return await this._cat(args[0]);
+        case "vim":   return await this._vim(args[0]);
         case "pwd":   return Promise.resolve(this.currentPath);
-        default:      return Promise.resolve(`shell: command not found: ${cmd}`);
+        default:
+          return `shell: command not found: ${cmd}`;
       }
     }
   
+    // List files and directories
     async _ls(dir) {
       await this._waitForAuth();
       const path = this._resolvePath(dir);
@@ -86,32 +94,37 @@
         return `ls: cannot access '${dir}': No such file or directory`;
       }
       const val = snap.val();
+      // File
       if (typeof val === "string") {
         const name = dir || path.split("/").pop();
-        return `<div>📄 <strong>${this._nameFromKey(name)}</strong></div>`;
+        return `📄 ${this._nameFromKey(name)}`;
       }
-      const entries = Object.keys(val);
-      if (entries.length === 0) return `<div>(empty)</div>`;
-      return entries.map(key => {
-        const name = this._nameFromKey(key);
-        return `<div>📁 <strong>${name}</strong></div>`;
-      }).join("");
+      // Directory
+      const keys = Object.keys(val);
+      if (!keys.length) {
+        return `(empty directory)`;
+      }
+      return keys
+        .map(k => `📁 ${this._nameFromKey(k)}`)
+        .join("\n");
     }
   
+    // Report type
     async _file(target) {
       await this._waitForAuth();
       if (!target) return `file: missing operand`;
       const path = this._resolvePath(target);
       const snap = await get(this._nodeRef(path));
-      if (!snap.exists()) return `file: ${target}: No such file or directory`;
-      const val = snap.val();
-      if (typeof val === "string") {
-        return `📄 '${target}' is a file`;
-      } else {
-        return `📁 '${target}' is a directory`;
+      if (!snap.exists()) {
+        return `file: ${target}: No such file or directory`;
       }
+      const val = snap.val();
+      return (typeof val === "string")
+        ? `📄 '${target}' is a file`
+        : `📁 '${target}' is a directory`;
     }
   
+    // Make directory w/ placeholder
     async _mkdir(dir) {
       await this._waitForAuth();
       if (!dir) return `mkdir: missing operand`;
@@ -120,13 +133,13 @@
       const nameKey    = this._keyFromName(path.split("/").pop());
       const parentSnap = await get(this._nodeRef(parentPath));
       if (!parentSnap.exists()) {
-        return `mkdir: cannot create directory '${dir}': No such parent`;
+        return `mkdir: cannot create '${dir}': No such parent directory`;
       }
       const existing = parentSnap.val() || {};
       if (existing[nameKey]) {
-        return `mkdir: cannot create directory '${dir}': File exists`;
+        return `mkdir: cannot create '${dir}': Already exists`;
       }
-      // create directory with placeholder file
+      // create directory with placeholder
       await update(this._nodeRef(parentPath), {
         [nameKey]: {
           [this._keyFromName("DONOTDELETE")]: "NODELETE"
@@ -135,127 +148,119 @@
       return `Directory '${dir}' created`;
     }
   
+    // Change directory
     async _cd(dir) {
       await this._waitForAuth();
+      if (!dir) return `cd: missing operand`;
       const path = this._resolvePath(dir);
       const snap = await get(this._nodeRef(path));
-      if (!snap.exists()) return `cd: no such file or directory: ${dir}`;
+      if (!snap.exists()) {
+        return `cd: no such file or directory: ${dir}`;
+      }
       if (typeof snap.val() === "string") {
         return `cd: not a directory: ${dir}`;
       }
       this.currentPath = path;
-      return "";
+      return `Directory changed to '${dir}'`;
     }
   
+    // Remove file or empty directory
     async _rm(target) {
       await this._waitForAuth();
       if (!target) return `rm: missing operand`;
       const path = this._resolvePath(target);
       const snap = await get(this._nodeRef(path));
-      if (!snap.exists()) return `rm: cannot remove '${target}': No such file or directory`;
+      if (!snap.exists()) {
+        return `rm: cannot remove '${target}': No such file or directory`;
+      }
       const val = snap.val();
       if (typeof val === "object" && Object.keys(val).length) {
         return `rm: cannot remove '${target}': Directory not empty`;
       }
       await remove(this._nodeRef(path));
-      return "";
+      return `Removed '${target}'`;
     }
   
+    // Display file contents
     async _cat(file) {
       await this._waitForAuth();
       if (!file) return `cat: missing operand`;
       const path = this._resolvePath(file);
       const snap = await get(this._nodeRef(path));
-      if (!snap.exists()) return `cat: ${file}: No such file`;
+      if (!snap.exists()) {
+        return `cat: ${file}: No such file`;
+      }
       const val = snap.val();
-      if (typeof val === "object") return `cat: ${file}: Is a directory`;
-      return val;
+      if (typeof val === "object") {
+        return `cat: ${file}: Is a directory`;
+      }
+      return val || ""; // empty file returns empty string
     }
   
+    // Edit with overlay
     async _vim(file) {
       await this._waitForAuth();
       if (!file) return `vim: missing file operand`;
-      const path = this._resolvePath(file);
+      const path    = this._resolvePath(file);
       const nodeRef = this._nodeRef(path);
   
+      // load or create
       let existing = "";
-      try {
-        const snap = await get(nodeRef);
-        if (snap.exists() && typeof snap.val() === "string") {
-          existing = snap.val();
-        } else if (!snap.exists()) {
-          await set(nodeRef, "");
-        }
-      } catch (e) {
-        console.warn("vim load error", e);
+      const snap = await get(nodeRef);
+      if (snap.exists()) {
+        if (typeof snap.val() === "string") existing = snap.val();
+      } else {
+        await set(nodeRef, "");
       }
   
+      // overlay
       const edited = await new Promise(resolve => {
         const overlay = document.createElement("div");
-        overlay.id = "vim-overlay";
         Object.assign(overlay.style, {
-          position: "fixed", top: 0, left: 0,
-          width: "100vw", height: "100vh",
+          position: "fixed", inset: 0,
           backgroundColor: "rgba(0,0,0,0.85)",
           display: "flex", alignItems: "center", justifyContent: "center",
-          zIndex: "2147483647"       // extra-high z-index
+          zIndex: "2147483647"
         });
-  
         const box = document.createElement("div");
-        box.id = "vim-box";
         Object.assign(box.style, {
-          width: "80%", maxWidth: "800px", backgroundColor: "#111",
-          padding: "20px", borderRadius: "8px",
+          width: "80%", maxWidth: "800px",
+          background: "#111", padding: "20px", borderRadius: "8px",
           display: "flex", flexDirection: "column"
         });
-  
         const ta = document.createElement("textarea");
         ta.value = existing;
         Object.assign(ta.style, {
-          flex: "1", backgroundColor: "#222", color: "#eee",
-          border: "none", padding: "10px", fontFamily: "monospace",
-          fontSize: "1rem", resize: "none"
+          flex: "1", background: "#222", color: "#eee",
+          border: "none", padding: "10px", fontFamily: "monospace", resize: "none"
         });
-  
         const ctrls = document.createElement("div");
         ctrls.style.textAlign = "right";
         ctrls.style.marginTop = "10px";
-  
         const saveBtn = document.createElement("button");
-        saveBtn.textContent = "Save";
+        saveBtn.textContent = "Save"; saveBtn.style.marginRight = "8px";
         const cancelBtn = document.createElement("button");
         cancelBtn.textContent = "Cancel";
-        saveBtn.style.marginRight = "8px";
-  
+        saveBtn.onclick = () => {
+          document.body.removeChild(overlay);
+          resolve(ta.value);
+        };
+        cancelBtn.onclick = () => {
+          document.body.removeChild(overlay);
+          resolve(null);
+        };
         ctrls.append(cancelBtn, saveBtn);
         box.append(ta, ctrls);
-        overlay.appendChild(box);
+        overlay.append(box);
         document.body.appendChild(overlay);
-  
-        cancelBtn.addEventListener("click", () => {
-          overlay.remove();
-          resolve(null);
-        }, { once: true });
-  
-        saveBtn.addEventListener("click", () => {
-          const content = ta.value;
-          overlay.remove();
-          resolve(content);
-        }, { once: true });
       });
   
-      if (edited === null) {
-        return `Editing canceled.`;
-      }
-      try {
-        await set(nodeRef, edited);
-        return `File '${this._nameFromKey(file)}' saved.`;
-      } catch (e) {
-        console.error("vim save error", e);
-        return `Error saving '${file}'.`;
-      }
+      if (edited === null) return `Editing canceled.`;
+      await set(nodeRef, edited);
+      return `File '${file}' saved.`;
     }
   }
+  
   
   
   

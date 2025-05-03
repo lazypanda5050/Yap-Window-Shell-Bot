@@ -19,11 +19,11 @@
 
   class Shell {
     constructor(database, auth) {
-      this.db          = database;
-      this.auth        = auth;
-      this.basePath    = "shellFS";
-      this.currentPath = "/";
-      this._authReady  = new Promise(res =>
+      this.db           = database;
+      this.auth         = auth;
+      this.basePath     = "shellFS";
+      this.currentPath  = "/";
+      this._authReady   = new Promise(res =>
         onAuthStateChanged(this.auth, user => res(user))
       );
     }
@@ -34,12 +34,10 @@
       return user;
     }
   
-    /** Convert user-visible filename → DB key */
     _keyFromName(name) {
       return name.replace(/\./g, "\\period");
     }
   
-    /** Convert DB key → user-visible filename */
     _nameFromKey(key) {
       return key.replace(/\\period/g, ".");
     }
@@ -56,13 +54,11 @@
       return "/" + stack.join("/");
     }
   
-    /** Always prefix with shellFS, then use key names */
     _nodeRef(path) {
-      // e.g. "/my.file/doc.txt" → ["my\periodfile","doc\periodtxt"]
-      const parts = path === "/" 
-        ? [] 
+      const parts = path === "/"
+        ? []
         : path.slice(1).split("/").map(this._keyFromName);
-      const fullPath = [this.basePath].concat(parts).join("/");
+      const fullPath = [this.basePath, ...parts].join("/");
       return ref(this.db, fullPath);
     }
   
@@ -71,6 +67,7 @@
       const [cmd, ...args] = cmdLine.trim().split(/\s+/);
       switch (cmd) {
         case "ls":    return this._ls(args[0] || "");
+        case "file":  return this._file(args[0]);
         case "mkdir": return this._mkdir(args[0]);
         case "cd":    return this._cd(args[0] || "");
         case "rm":    return this._rm(args[0]);
@@ -85,75 +82,64 @@
       await this._waitForAuth();
       const path = this._resolvePath(dir);
       const snap = await get(this._nodeRef(path));
-    
       if (!snap.exists()) {
         return `ls: cannot access '${dir}': No such file or directory`;
       }
-    
       const val = snap.val();
-    
-      // If it's a file (string), show file emoji + name
       if (typeof val === "string") {
         const name = dir || path.split("/").pop();
         return `<div>📄 <strong>${this._nameFromKey(name)}</strong></div>`;
       }
-    
-      // Otherwise it's a directory: list child keys with folder emoji
       const entries = Object.keys(val);
-      if (entries.length === 0) {
-        return `<div>(empty)</div>`;
-      }
-    
-      return entries
-        .map(key => {
-          const displayName = this._nameFromKey(key);
-          return `<div>📁 <strong>${displayName}</strong></div>`;
-        })
-        .join("");
+      if (entries.length === 0) return `<div>(empty)</div>`;
+      return entries.map(key => {
+        const name = this._nameFromKey(key);
+        return `<div>📁 <strong>${name}</strong></div>`;
+      }).join("");
     }
-    
+  
+    async _file(target) {
+      await this._waitForAuth();
+      if (!target) return `file: missing operand`;
+      const path = this._resolvePath(target);
+      const snap = await get(this._nodeRef(path));
+      if (!snap.exists()) return `file: ${target}: No such file or directory`;
+      const val = snap.val();
+      if (typeof val === "string") {
+        return `📄 '${target}' is a file`;
+      } else {
+        return `📁 '${target}' is a directory`;
+      }
+    }
+  
     async _mkdir(dir) {
       await this._waitForAuth();
       if (!dir) return `mkdir: missing operand`;
-    
-      try {
-        const path = this._resolvePath(dir);
-        const parentPath = path.substring(0, path.lastIndexOf("/")) || "/";
-        const nameKey = this._keyFromName(path.split("/").pop());
-        const parentSnap = await get(this._nodeRef(parentPath));
-    
-        if (!parentSnap.exists()) {
-          return `mkdir: cannot create directory '${dir}': No such parent`;
-        }
-    
-        const existing = parentSnap.val() || {};
-        if (existing[nameKey]) {
-          return `mkdir: cannot create directory '${dir}': File exists`;
-        }
-    
-        // Create the new directory with a placeholder file
-        await update(this._nodeRef(parentPath), {
-          [nameKey]: {
-            [this._keyFromName("DONOTDELETE")]: "NODELETE"
-          }
-        });
-    
-        return `Directory '${dir}' created successfully.`;
-      } catch (error) {
-        console.error("Error in mkdir:", error);
-        return `mkdir: error creating directory '${dir}': ${error.message}`;
+      const path       = this._resolvePath(dir);
+      const parentPath = path.substring(0, path.lastIndexOf("/")) || "/";
+      const nameKey    = this._keyFromName(path.split("/").pop());
+      const parentSnap = await get(this._nodeRef(parentPath));
+      if (!parentSnap.exists()) {
+        return `mkdir: cannot create directory '${dir}': No such parent`;
       }
+      const existing = parentSnap.val() || {};
+      if (existing[nameKey]) {
+        return `mkdir: cannot create directory '${dir}': File exists`;
+      }
+      // create directory with placeholder file
+      await update(this._nodeRef(parentPath), {
+        [nameKey]: {
+          [this._keyFromName("DONOTDELETE")]: "NODELETE"
+        }
+      });
+      return `Directory '${dir}' created`;
     }
-    
-    
   
     async _cd(dir) {
       await this._waitForAuth();
       const path = this._resolvePath(dir);
       const snap = await get(this._nodeRef(path));
-      if (!snap.exists()) {
-        return `cd: no such file or directory: ${dir}`;
-      }
+      if (!snap.exists()) return `cd: no such file or directory: ${dir}`;
       if (typeof snap.val() === "string") {
         return `cd: not a directory: ${dir}`;
       }
@@ -166,9 +152,7 @@
       if (!target) return `rm: missing operand`;
       const path = this._resolvePath(target);
       const snap = await get(this._nodeRef(path));
-      if (!snap.exists()) {
-        return `rm: cannot remove '${target}': No such file or directory`;
-      }
+      if (!snap.exists()) return `rm: cannot remove '${target}': No such file or directory`;
       const val = snap.val();
       if (typeof val === "object" && Object.keys(val).length) {
         return `rm: cannot remove '${target}': Directory not empty`;
@@ -182,21 +166,16 @@
       if (!file) return `cat: missing operand`;
       const path = this._resolvePath(file);
       const snap = await get(this._nodeRef(path));
-      if (!snap.exists()) {
-        return `cat: ${file}: No such file`;
-      }
+      if (!snap.exists()) return `cat: ${file}: No such file`;
       const val = snap.val();
-      if (typeof val === "object") {
-        return `cat: ${file}: Is a directory`;
-      }
+      if (typeof val === "object") return `cat: ${file}: Is a directory`;
       return val;
     }
   
     async _vim(file) {
       await this._waitForAuth();
       if (!file) return `vim: missing file operand`;
-  
-      const path    = this._resolvePath(file);
+      const path = this._resolvePath(file);
       const nodeRef = this._nodeRef(path);
   
       let existing = "";
@@ -205,29 +184,29 @@
         if (snap.exists() && typeof snap.val() === "string") {
           existing = snap.val();
         } else if (!snap.exists()) {
-          // create empty file
           await set(nodeRef, "");
         }
-      } catch (_) {}
+      } catch (e) {
+        console.warn("vim load error", e);
+      }
   
       const edited = await new Promise(resolve => {
-        // overlay container
         const overlay = document.createElement("div");
         overlay.id = "vim-overlay";
         Object.assign(overlay.style, {
           position: "fixed", top: 0, left: 0,
           width: "100vw", height: "100vh",
-          backgroundColor: "rgba(0,0,0,0.8)",
+          backgroundColor: "rgba(0,0,0,0.85)",
           display: "flex", alignItems: "center", justifyContent: "center",
-          zIndex: 9999
+          zIndex: "2147483647"       // extra-high z-index
         });
   
         const box = document.createElement("div");
         box.id = "vim-box";
         Object.assign(box.style, {
           width: "80%", maxWidth: "800px", backgroundColor: "#111",
-          padding: "20px", borderRadius: "8px", display: "flex",
-          flexDirection: "column"
+          padding: "20px", borderRadius: "8px",
+          display: "flex", flexDirection: "column"
         });
   
         const ta = document.createElement("textarea");
@@ -239,7 +218,6 @@
         });
   
         const ctrls = document.createElement("div");
-        ctrls.className = "vim-controls";
         ctrls.style.textAlign = "right";
         ctrls.style.marginTop = "10px";
   
@@ -271,12 +249,14 @@
       }
       try {
         await set(nodeRef, edited);
-        return `File '${this._nameFromKey(path.split("/").pop())}' saved.`;
+        return `File '${this._nameFromKey(file)}' saved.`;
       } catch (e) {
+        console.error("vim save error", e);
         return `Error saving '${file}'.`;
       }
     }
   }
+  
   
   
 

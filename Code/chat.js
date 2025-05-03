@@ -13,8 +13,14 @@
     SHELL: "[SHELL]"
   };
   const users = {};
-  const email = await auth.currentUser.email;
-  const shell = await new Shell(database, auth);
+  const email = auth.currentUser.email;
+
+  let shell;
+  await (async () => {
+    shell = await new Shell(database, auth);
+
+    await shell.initCwd();
+  })();
 
   class Shell {
     constructor(database, auth) {

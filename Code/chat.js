@@ -71,17 +71,17 @@
     async exec(cmdLine) {
       await this._waitForAuth();
       const [ cmd, ...args ] = cmdLine.trim().split(/\s+/);
+  
       switch (cmd) {
-        case "ls":    return await this._ls(args[0] || "");
-        case "file":  return await this._file(args[0]);
-        case "mkdir": return await this._mkdir(args[0]);
-        case "cd":    return await this._cd(args[0] || "");
-        case "rm":    return await this._rm(args[0]);
-        case "cat":   return await this._cat(args[0]);
-        case "vim":   return await this._vim(args[0]);
+        case "ls":    return this._ls(args[0] || "");
+        case "file":  return this._file(args[0]);
+        case "mkdir": return this._mkdir(args[0]);
+        case "cd":    return this._cd(args[0] || "");
+        case "rm":    return this._rm(args[0], args.includes("-r"));
+        case "cat":   return this._cat(args[0]);
+        case "vim":   return this._vim(args[0]);
         case "pwd":   return Promise.resolve(this.currentPath);
-        default:
-          return `shell: command not found: ${cmd}`;
+        default:      return `shell: command not found: ${cmd}`;
       }
     }
   
@@ -150,35 +150,80 @@
   
     // Change directory
     async _cd(dir) {
-      await this._waitForAuth();
       if (!dir) return `cd: missing operand`;
-      const path = this._resolvePath(dir);
-      const snap = await get(this._nodeRef(path));
+      await this._waitForAuth();
+  
+      // resolve relative to currentPath
+      const newPath = this._resolvePath(dir);
+      const snap    = await get(this._nodeRef(newPath));
+  
       if (!snap.exists()) {
         return `cd: no such file or directory: ${dir}`;
       }
       if (typeof snap.val() === "string") {
         return `cd: not a directory: ${dir}`;
       }
-      this.currentPath = path;
-      return `Directory changed to '${dir}'`;
+  
+      // **Actual state change**
+      this.currentPath = newPath;
+      return `Changed directory to '${newPath}'`;
     }
   
     // Remove file or empty directory
-    async _rm(target) {
-      await this._waitForAuth();
+    async _rm(target, recursive = false) {
       if (!target) return `rm: missing operand`;
+      await this._waitForAuth();
+  
       const path = this._resolvePath(target);
-      const snap = await get(this._nodeRef(path));
+      const node = this._nodeRef(path);
+      const snap = await get(node);
+  
       if (!snap.exists()) {
         return `rm: cannot remove '${target}': No such file or directory`;
       }
+  
       const val = snap.val();
-      if (typeof val === "object" && Object.keys(val).length) {
-        return `rm: cannot remove '${target}': Directory not empty`;
+      const isDir = typeof val === "object";
+  
+      if (isDir && !recursive) {
+        const children = Object.keys(val);
+        if (children.length) {
+          return `rm: cannot remove '${target}': Directory not empty (use -r)`;
+        }
+        // empty dir: safe to delete
+        await remove(node);
+        return `Removed directory '${target}'`;
       }
-      await remove(this._nodeRef(path));
-      return `Removed '${target}'`;
+  
+      if (isDir && recursive) {
+        // recursively delete all children
+        await this._rmRecursive(path);
+        return `Recursively removed directory '${target}'`;
+      }
+  
+      // file
+      await remove(node);
+      return `Removed file '${target}'`;
+    }
+
+    async _rmRecursive(path) {
+      const node = this._nodeRef(path);
+      const snap = await get(node);
+      if (!snap.exists()) return;
+      const val = snap.val();
+      if (typeof val === "object") {
+        // delete children first
+        for (let key of Object.keys(val)) {
+          // reconstruct child path: replace \period back to .
+          const childName = this._nameFromKey(key);
+          const childPath = path === "/"
+            ? `/${childName}`
+            : `${path}/${childName}`;
+          await this._rmRecursive(childPath);
+        }
+      }
+      // then delete self
+      await remove(node);
     }
   
     // Display file contents

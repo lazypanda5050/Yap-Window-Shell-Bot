@@ -14,8 +14,7 @@
   };
   const users = {};
   const email = await auth.currentUser.email;
-  await console.log(auth.currentUser.emailVerified);
-  await console.log(auth.currentUser);
+  const shell = await new Shell(database, auth);
 
   class Shell {
     constructor(database, auth) {
@@ -2407,7 +2406,6 @@
         const command = pureMessage.trim().slice(7);
         let useSudo = false;
         console.log('Received pureMessage:', pureMessage);
-        const shell = await new Shell(database, auth);
 
         const userMessageRef = push(messagesRef);
         await update(userMessageRef, {

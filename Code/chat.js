@@ -1,27 +1,4 @@
 (async function () {
-  var readMessages = {};
-  var readAll = true;
-  var isDark = false;
-  let pendingFormOptions = null;
-  let isSending = false;
-  const BOT_USERS = {
-    AI: "[AI]",
-    RNG: "[RNG]",
-    EOD: "[EOD]",
-    ADMIN: "[ADMIN]",
-    SNAKE: "[Snake Game]",
-    SHELL: "[SHELL]"
-  };
-  const users = {};
-  const email = auth.currentUser.email;
-
-  let shell;
-  await (async () => {
-    shell = await new Shell(database, auth);
-
-    await shell.initCwd();
-  })();
-
   class Shell {
     constructor(database, auth) {
       this.db          = database;
@@ -300,6 +277,29 @@
       return `File '${file}' saved.`;
     }
   } 
+
+  var readMessages = {};
+  var readAll = true;
+  var isDark = false;
+  let pendingFormOptions = null;
+  let isSending = false;
+  const BOT_USERS = {
+    AI: "[AI]",
+    RNG: "[RNG]",
+    EOD: "[EOD]",
+    ADMIN: "[ADMIN]",
+    SNAKE: "[Snake Game]",
+    SHELL: "[SHELL]"
+  };
+  const users = {};
+  const email = auth.currentUser.email;
+
+  let shell;
+  await (async () => {
+    shell = await new Shell(database, auth);
+
+    await shell.initCwd();
+  })();
 
   if (!auth.currentUser || !auth.currentUser.emailVerified) {
     alert("Please verify your email before using chat.");

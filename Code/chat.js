@@ -131,13 +131,20 @@
           return `mkdir: cannot create directory '${dir}': File exists`;
         }
     
-        await update(this._nodeRef(parentPath), { [nameKey]: {} });
+        // Create the new directory with a placeholder file
+        await update(this._nodeRef(parentPath), {
+          [nameKey]: {
+            [this._keyFromName("DONOTDELETE")]: "NODELETE"
+          }
+        });
+    
         return `Directory '${dir}' created successfully.`;
       } catch (error) {
         console.error("Error in mkdir:", error);
         return `mkdir: error creating directory '${dir}': ${error.message}`;
       }
     }
+    
     
   
     async _cd(dir) {

@@ -172,19 +172,26 @@
       return `Directory '${dir}' created`;
     }
   
-    // Change directory
-    async _cd(dir) {
-      await this._waitForAuth();
-      if (!dir) return `cd: missing operand`;
-      const path = this._resolvePath(dir);
-      const snap = await get(this._nodeRef(path));
-      if (!snap.exists()) return `cd: no such file or directory: ${dir}`;
-      if (typeof snap.val() === "string") {
-        return `cd: not a directory: ${dir}`;
-      }
-      this.currentPath = path; // actually update
-      return `Changed directory to '${dir}'`;
+     // Change directory
+  async _cd(dir) {
+    await this._waitForAuth();
+    if (!dir) return `cd: missing operand`;
+
+    // 1. Resolve the new absolute path
+    const newPath = this._resolvePath(dir);
+
+    // 2. Check it exists and is a directory
+    const snap = await get(this._nodeRef(newPath));
+    if (!snap.exists()) {
+      return `cd: no such file or directory: ${dir}`;
     }
+    if (typeof snap.val() === "string") {
+      return `cd: not a directory: ${dir}`;
+    }
+    // 3. **Assign** the resolved path to currentPath
+    this.currentPath = newPath;
+    return `Changed directory to '${newPath}'`;
+  }
   
     // Remove file or directory, optionally recursive
     async _rm(target, recursive = false) {

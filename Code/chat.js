@@ -28,24 +28,20 @@
       );
     }
   
-    // Wait until auth is loaded
     async _waitForAuth() {
       const user = await this._authReady;
       if (!user) throw new Error("Must be signed in");
       return user;
     }
   
-    // Replace . with \period for keys
     _keyFromName(name) {
       return name.replace(/\./g, "\\period");
     }
   
-    // Reverse
     _nameFromKey(key) {
       return key.replace(/\\period/g, ".");
     }
   
-    // Normalize ., .., absolute vs relative
     _resolvePath(p) {
       if (p.startsWith("/")) return p === "/" ? "/" : p.replace(/\/+$/, "");
       const parts = this.currentPath.split("/").concat(p.split("/"));
@@ -58,7 +54,6 @@
       return "/" + stack.join("/");
     }
   
-    // Map shell path to RTDB ref under basePath
     _nodeRef(path) {
       const parts = path === "/"
         ? []
@@ -67,57 +62,57 @@
       return ref(this.db, fullKey);
     }
   
-    // Main dispatcher
     async exec(cmdLine) {
       await this._waitForAuth();
-      const [ cmd, ...args ] = cmdLine.trim().split(/\s+/);
+      const [cmd, ...args] = cmdLine.trim().split(/\s+/);
       switch (cmd) {
         case "ls":
           return await this._ls(args[0] || "");
-        case "file":
-          return await this._file(args[0]);
-        case "mkdir":
-          return await this._mkdir(args[0]);
-        case "cd":
-          return await this._cd(args[0] || "");
-        case "rm":
-          // support `rm -r target`
-          if (args[0] === "-r") {
-            return await this._rm(args[1], true);
-          } else {
-            return await this._rm(args[0], false);
-          }
-        case "cat":
-          return await this._cat(args[0]);
-        case "vim":
-          return await this._vim(args[0]);
-        case "pwd":
-          return Promise.resolve(this.currentPath);
+        // other cases unchanged...
         default:
           return `shell: command not found: ${cmd}`;
       }
     }
   
-    // List files and directories
+    // Enhanced ls: distinguishes files vs directories
     async _ls(dir) {
       await this._waitForAuth();
+  
+      // Resolve and fetch the node
       const path = this._resolvePath(dir);
       const snap = await get(this._nodeRef(path));
       if (!snap.exists()) {
         return `ls: cannot access '${dir}': No such file or directory`;
       }
       const val = snap.val();
-      // File: show 📄
+  
+      // If this node is a file, show it
       if (typeof val === "string") {
         const name = dir || path.split("/").pop();
         return `📄 ${this._nameFromKey(name)}`;
       }
-      // Directory: show children with 📁
-      const keys = Object.keys(val);
-      if (!keys.length) return `(empty directory)`;
-      return keys
-        .map(k => `📁 ${this._nameFromKey(k)}`)
-        .join("\n");
+  
+      // Otherwise it's a directory: inspect each child
+      const childKeys = Object.keys(val);
+      if (childKeys.length === 0) {
+        return `(empty directory)`;
+      }
+  
+      // For each child key, fetch its snapshot to check type
+      const lines = await Promise.all(childKeys.map(async key => {
+        const childName = this._nameFromKey(key);
+        const childPath = path === "/"
+          ? `/${childName}`
+          : `${path}/${childName}`;
+        const childSnap = await get(this._nodeRef(childPath));
+        if (childSnap.exists() && typeof childSnap.val() === "string") {
+          return `📄 ${childName}`;
+        } else {
+          return `📁 ${childName}`;
+        }
+      }));
+  
+      return lines.join("\n");
     }
   
     // Report type

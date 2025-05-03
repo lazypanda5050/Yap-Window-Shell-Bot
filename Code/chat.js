@@ -85,42 +85,60 @@
       await this._waitForAuth();
       const path = this._resolvePath(dir);
       const snap = await get(this._nodeRef(path));
+    
       if (!snap.exists()) {
         return `ls: cannot access '${dir}': No such file or directory`;
       }
+    
       const val = snap.val();
-      // If it's a file, show its name
+    
+      // If it's a file (string), show file emoji + name
       if (typeof val === "string") {
         const name = dir || path.split("/").pop();
         return `<div>📄 <strong>${this._nameFromKey(name)}</strong></div>`;
       }
-      // Otherwise it's a directory: list child keys
+    
+      // Otherwise it's a directory: list child keys with folder emoji
       const entries = Object.keys(val);
       if (entries.length === 0) {
         return `<div>(empty)</div>`;
       }
+    
       return entries
-        .map(k => `<div>📁 <strong>${this._nameFromKey(k)}</strong></div>`)
+        .map(key => {
+          const displayName = this._nameFromKey(key);
+          return `<div>📁 <strong>${displayName}</strong></div>`;
+        })
         .join("");
     }
-  
+    
     async _mkdir(dir) {
       await this._waitForAuth();
       if (!dir) return `mkdir: missing operand`;
-      const path       = this._resolvePath(dir);
-      const parentPath = path.substring(0, path.lastIndexOf("/")) || "/";
-      const nameKey    = this._keyFromName(path.split("/").pop());
-      const parentSnap = await get(this._nodeRef(parentPath));
-      if (!parentSnap.exists()) {
-        return `mkdir: cannot create directory '${dir}': No such parent`;
+    
+      try {
+        const path = this._resolvePath(dir);
+        const parentPath = path.substring(0, path.lastIndexOf("/")) || "/";
+        const nameKey = this._keyFromName(path.split("/").pop());
+        const parentSnap = await get(this._nodeRef(parentPath));
+    
+        if (!parentSnap.exists()) {
+          return `mkdir: cannot create directory '${dir}': No such parent`;
+        }
+    
+        const existing = parentSnap.val() || {};
+        if (existing[nameKey]) {
+          return `mkdir: cannot create directory '${dir}': File exists`;
+        }
+    
+        await update(this._nodeRef(parentPath), { [nameKey]: {} });
+        return `Directory '${dir}' created successfully.`;
+      } catch (error) {
+        console.error("Error in mkdir:", error);
+        return `mkdir: error creating directory '${dir}': ${error.message}`;
       }
-      const existing = parentSnap.val() || {};
-      if (existing[nameKey]) {
-        return `mkdir: cannot create directory '${dir}': File exists`;
-      }
-      await update(this._nodeRef(parentPath), { [nameKey]: {} });
-      return "";
     }
+    
   
     async _cd(dir) {
       await this._waitForAuth();

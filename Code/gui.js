@@ -29,7 +29,7 @@
 			z-index: 1000000;
 			background-color: ${isDark ? "#333" : "#fff"};
 			color: ${isDark ? "#ddd" : "#333"};
-			font-family: Monospace, 'Aptos',
+			font-family: 'Aptos',
 				Calibri,
 				sans-serif;
 			border-radius: 10px;
@@ -372,6 +372,7 @@
 			background-color: ${isDark ? "#444" : "#e0e0e0"};
 			color: ${isDark ? "#ccc" : "#333"};
 			white-space: pre-wrap;
+			font-family: monospace;
 		}
 
 		.message.sent {

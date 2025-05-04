@@ -269,7 +269,6 @@
         .map(k => this._emailFromKey(k))
         .join("\n");
     }
-  }
   
     _nodeRef(path) {
       const parts = path === "/"

@@ -178,18 +178,18 @@
         []: Optional argument
 
         Commands:
-        help: Displays this information
-        ls: Lists the files in the current working directory
-        cd <path>: Changes working directory to relative path
-        file <file>: Outputs whether object is a file or a folder
-        mkdir [-s] <name>: Creates a directory. -s to require sudo permissions to access (requires sudo permissions)
-        rm [-r]: Remove a file. Use -r to remove a directory. Use sudo permissions to remove a DONOTDELETE file
-        cat <file>: Outputs the contents of a file
-        vim [-s] <file>: Shows a popup letting you edit a file. -s to require sudo permissions to access (requires sudo permissions)
-        pwd: Outputs the current working directory
-        ban <email>: Bans a user. Requires sudo permissions
-        unban <email>: Unbans a user. Requires sudo permissions
-        listbanned: Lists all banned users. Requires sudo permissions
+        help: Displays this information<br>
+        ls: Lists the files in the current working directory\n
+        cd <path>: Changes working directory to relative path\n
+        file <file>: Outputs whether object is a file or a folder\n
+        mkdir [-s] <name>: Creates a directory. -s to require sudo permissions to access (requires sudo permissions)\n
+        rm [-r]: Remove a file. Use -r to remove a directory. Use sudo permissions to remove a DONOTDELETE file\n
+        cat <file>: Outputs the contents of a file\n
+        vim [-s] <file>: Shows a popup letting you edit a file. -s to require sudo permissions to access (requires sudo permissions)\n
+        pwd: Outputs the current working directory\n
+        ban <email>: Bans a user. Requires sudo permissions\n
+        unban <email>: Unbans a user. Requires sudo permissions\n
+        listbanned: Lists all banned users. Requires sudo permissions\n
       `
     }
   

@@ -2458,6 +2458,7 @@
         });
 
         let banned = await isBanned(email, database);
+        console.log(banned);
         if (banned){
           const bannedMessageRef = push(messagesRef);
           await update(bannedMessageRef, {

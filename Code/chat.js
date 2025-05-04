@@ -233,19 +233,50 @@
       return `Changed directory to '${np}'`;
     }
   
+    // Copy file or empty directory
     async _cp(src, dst) {
-      if (!src||!dst) return `cp: missing operand`;
-      const sSnap = await get(this._nodeRef(this._resolvePath(src)));
-      if (!sSnap.exists()) return `cp: '${src}': No such file or directory`;
-      await set(this._nodeRef(this._resolvePath(dst)), sSnap.val());
-      return "";
+      if (!src || !dst) return `cp: missing operand`;
+      
+      const srcPath  = this._resolvePath(src);
+      const dstPath  = this._resolvePath(dst);
+      const srcSnap  = await get(this._nodeRef(srcPath));
+      if (!srcSnap.exists()) {
+        return `cp: cannot stat '${src}': No such file or directory`;
+      }
+
+      // Perform the copy
+      await set(this._nodeRef(dstPath), srcSnap.val());
+      return `Copied '${src}' to '${dst}'`;
     }
   
+    // Move (rename) file or directory
     async _mv(src, dst) {
-      const err = await this._cp(src,dst);
-      if (err) return err;
-      await this._rm(src,false,true);
-      return "";
+      if (!src || !dst) return `mv: missing operand`;
+
+      const srcPath = this._resolvePath(src);
+      const dstPath = this._resolvePath(dst);
+      const srcSnap = await get(this._nodeRef(srcPath));
+      if (!srcSnap.exists()) {
+        return `mv: cannot stat '${src}': No such file or directory`;
+      }
+
+      // If dst is an existing directory, move INTO it
+      const dstSnap = await get(this._nodeRef(dstPath));
+      let finalDst;
+      if (dstSnap.exists() && typeof dstSnap.val() === "object") {
+        const baseName = srcPath.split("/").pop();
+        finalDst = dstPath === "/"
+          ? `/${baseName}`
+          : `${dstPath}/${baseName}`;
+      } else {
+        finalDst = dstPath;
+      }
+
+      // Copy then remove original
+      await set(this._nodeRef(finalDst), srcSnap.val());
+      const isDir = typeof srcSnap.val() === "object";
+      await this._rm(src, isDir, true);   // use sudo‑true to bypass protection
+      return `Moved '${src}' to '${this._nameFromKey(finalDst.split("/").pop())}'`;
     }
   
     async _rm(target, recursive=false, isSudo=false) {

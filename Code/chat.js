@@ -153,8 +153,8 @@
     // --- BUILT‑IN COMMANDS ---
   
     async _help() {
-      return `Available commands:
-      ls [path]            List files and directories
+      return `Available commands:<br>
+      ls [path]            List files and directories<br>
       file <path>          Show file or directory
       mkdir [-s] <dir>     Make directory; -s marks it protected (sudo only)
       cd <dir>             Change working directory

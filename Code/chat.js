@@ -115,7 +115,12 @@
       const args  = parts.slice(1);
   
       switch (cmd) {
-        case "echo":       return args.join(" ");
+        case "echo":
+        // If no arguments, echo the piped-in stdin
+          if (args.length === 0) {
+            return stdin;
+          }
+          return args.join(" ");
         case "cp":         await this._cp(args[0], args[1]); return "";
         case "mv":         await this._mv(args[0], args[1]); return "";
         case "ls":         return this._protectedWrapper(args[0]||"", false, this._ls);
@@ -2512,7 +2517,7 @@
           const bannedMessageRef = push(messagesRef);
           await update(bannedMessageRef, {
             User: "[SHELL]",
-            Message: "Use /shell help to display help\nYou have been banned. Please contact Winston for help.",
+            Message: "Use /shell help to display help\n\nYou have been banned. Please contact Winston for help.",
             Date: Date.now()
           });
           noCommand = true;
@@ -2520,7 +2525,7 @@
           const emptyMessageRef = push(messagesRef);
           await update(emptyMessageRef, {
             User: "[SHELL]",
-            Message: "Use /shell help to display help\nNo command detected",
+            Message: "Use /shell help to display help\n\nNo command detected",
             Date: Date.now()
           })
         } else if (command.trim().startsWith("sudo")){
@@ -2561,7 +2566,7 @@
           const responseMessageRef = push(messagesRef);
           await update(responseMessageRef, {
             User: "[SHELL]",
-            Message: `Use /shell help to display help\n${response}`,
+            Message: `Use /shell help to display help\n\n${response}`,
             Date: Date.now()
           });
         }

@@ -1,23 +1,25 @@
 (async function () {
   class Shell {
     constructor(database, auth) {
-      this.db          = database;
-      this.auth        = auth;
-      this.basePath    = "shellFS";
-      this.cwdKey      = "cwd";
-      this.currentPath = "/";
-      this._authReady  = new Promise(res =>
+      this.db                = database;
+      this.auth              = auth;
+      this.basePath          = "shellFS";
+      this.cwdKey            = "cwd";
+      this.currentPath       = "/";
+      this._authReady        = new Promise(res =>
         onAuthStateChanged(this.auth, user => res(user))
       );
-      this._cwdInitialized = false;
+      this._cwdInitialized   = false;
     }
   
+    // --- AUTH GUARD ---
     async _waitForAuth() {
       const user = await this._authReady;
       if (!user) throw new Error("Must be signed in");
       return user;
     }
   
+    // --- CWD PERSISTENCE ---
     async initCwd() {
       await this._waitForAuth();
       const snap = await get(ref(this.db, this.cwdKey));
@@ -34,6 +36,7 @@
       await set(ref(this.db, this.cwdKey), this.currentPath);
     }
   
+    // --- PATH HELPERS ---
     _resolvePath(p) {
       if (p.startsWith("/")) return p === "/" ? "/" : p.replace(/\/+$/, "");
       const parts = this.currentPath.split("/").concat(p.split("/"));
@@ -46,19 +49,19 @@
       return "/" + stack.join("/");
     }
   
+    // --- KEY ENCODING ---
     _keyFromName(name) {
       return name.replace(/\./g, "\\period");
     }
     _nameFromKey(key) {
       return key.replace(/\\period/g, ".");
     }
-
-    _emailFromKey(key) {
-      return key.replace(/\\period/g, ".");
-    }
-
+  
     _keyFromEmail(email) {
-      return email.replace(/\./g, "\\period");
+      return email.replace(/\./g, "*");
+    }
+    _emailFromKey(key) {
+      return key.replace(/\*/g, ".");
     }
   
     _nodeRef(path) {
@@ -69,75 +72,72 @@
       return ref(this.db, key);
     }
   
+    // --- PROTECTION METADATA ---
+    async _isProtected(path) {
+      const metaKey = path === "/"
+        ? "__protected"
+        : path.split("/").map(this._keyFromName).join("/") + "__protected";
+      const snap = await get(ref(this.db, `${this.basePath}/${metaKey}`));
+      return snap.exists() && snap.val() === true;
+    }
+  
+    // --- MAIN DISPATCHER ---
     async exec(cmdLine) {
       await this._waitForAuth();
       if (!this._cwdInitialized) await this.initCwd();
   
-      const [cmd, ...args] = cmdLine.trim().split(/\s+/);
-      const isSudo = cmd === "sudo";
-      const primary = isSudo ? args[0] : cmd;
-      const rest = isSudo ? args.slice(1) : args;
+      const [ cmd, ...args ] = cmdLine.trim().split(/\s+/);
+      const isSudo  = cmd === "sudo";
+      const action  = isSudo ? args.shift() : cmd;
+      const rest    = isSudo ? args : args;
   
-      switch (primary) {
-        case "ls":    return this._ls(rest[0] || "");
+      switch (action) {
+        case "ls":    return this._protectedWrapper(rest[0]||"", isSudo, this._ls);
         case "file":  return this._file(rest[0]);
-        case "mkdir": return this._mkdir(rest[0]);
-        case "cd":    return this._cd(rest[0] || "");
+        case "mkdir": return this._mkdir(rest[0], rest.includes("-s"), isSudo);
+        case "cd":    return this._cd(rest[0]||"");
         case "rm": {
           const recursive = rest.includes("-r");
-          const target = rest.find(a => a !== "-r");
+          const target    = rest.find(a=>a!=="-r");
           return this._rm(target, recursive, isSudo);
         }
-        case "cat":   return this._cat(rest[0]);
-        case "vim":   return this._vim(rest[0]);
-        case "ban":   return isSudo ? this._ban(rest[0]) : "Permission denied";
+        case "cat":   return this._protectedWrapper(rest[0], isSudo, this._cat);
+        case "vim":   return this._vim(rest[0], rest.includes("-s"), isSudo);
+        case "ban":   return isSudo ? this._ban(rest[0])   : "Permission denied";
         case "unban": return isSudo ? this._unban(rest[0]) : "Permission denied";
-        case "listbanned": return isSudo ? this._listBanned() : "Permission denied";
+        case "banned":return isSudo ? this._listBanned()   : "Permission denied";
         case "pwd":   return Promise.resolve(this.currentPath);
         default:      return `shell: command not found: ${cmdLine}`;
       }
     }
-
-    async _ban(email) {
-      if (!email) return `ban: missing operand`;
-      const key = this._keyFromEmail(email);
-      await update(ref(this.db, `ban`), { [key]: true });
-      return `Banned '${email}'`;
-    }
-
-    async _unban(email) {
-      if (!email) return `unban: missing operand`;
-      const key = this._keyFromEmail(email);
-      await remove(ref(this.db, `ban/${key}`));
-      return `Unbanned '${email}'`;
+  
+    // Wrapper to check protection before running cmd(path)
+    async _protectedWrapper(arg, isSudo, fn) {
+      const path = this._resolvePath(arg||"");
+      if (await this._isProtected(path) && !isSudo) {
+        return `Permission denied: '${arg}' is protected`;
+      }
+      return fn.call(this, arg);
     }
   
-    async _listBanned() {
-      const snap = await get(ref(this.db, `ban`));
-      if (!snap.exists()) return `(no banned users)`;
-      const keys = Object.keys(snap.val());
-      if (!keys.length) return `(no banned users)`;
-      return keys
-        .map(key => this._emailFromKey(key))
-        .join("\n");
-    }
-
+    // --- COMMAND IMPLEMENTATIONS ---
+  
     async _ls(dir) {
       const path = this._resolvePath(dir);
       const snap = await get(this._nodeRef(path));
       if (!snap.exists()) return `ls: cannot access '${dir}': No such file or directory`;
       const val = snap.val();
       if (typeof val === "string") {
-        const name = dir || path.split("/").pop();
+        const name = dir||path.split("/").pop();
         return `📄 ${this._nameFromKey(name)}`;
       }
       const keys = Object.keys(val);
       if (!keys.length) return `(empty directory)`;
-      const lines = await Promise.all(keys.map(async key => {
-        const name = this._nameFromKey(key);
-        const childPath = path === "/" ? `/${name}` : `${path}/${name}`;
-        const csnap = await get(this._nodeRef(childPath));
-        return (csnap.exists() && typeof csnap.val() === "string")
+      const lines = await Promise.all(keys.map(async key=>{
+        const name      = this._nameFromKey(key);
+        const childPath = path==="/"?`/${name}`:`${path}/${name}`;
+        const csnap     = await get(this._nodeRef(childPath));
+        return (csnap.exists()&&typeof csnap.val()==="string")
           ? `📄 ${name}`
           : `📁 ${name}`;
       }));
@@ -149,34 +149,34 @@
       const path = this._resolvePath(target);
       const snap = await get(this._nodeRef(path));
       if (!snap.exists()) return `file: ${target}: No such file or directory`;
-      return (typeof snap.val() === "string")
+      return (typeof snap.val()==="string")
         ? `📄 '${target}' is a file`
         : `📁 '${target}' is a directory`;
     }
   
-    async _mkdir(dir) {
+    async _mkdir(dir, sudoFlag, isSudo) {
       if (!dir) return `mkdir: missing operand`;
-      const path = this._resolvePath(dir);
-      const parent = path.substring(0, path.lastIndexOf("/")) || "/";
-      const nameKey = this._keyFromName(path.split("/").pop());
-      // check duplicate
-      const parentSnap = await get(this._nodeRef(parent));
-      if (!parentSnap.exists()) return `mkdir: cannot create '${dir}': No such parent`;
-      const existing = parentSnap.val() || {};
-      if (existing[nameKey]) return `mkdir: cannot create '${dir}': Already exists`;
-  
-      await update(this._nodeRef(parent), {
-        [nameKey]: { [this._keyFromName("DONOTDELETE")]: "NODELETE" }
-      });
+      if (sudoFlag && !isSudo) return `Permission denied: sudo needed for -s`;
+      const path   = this._resolvePath(dir);
+      const parent = path.substring(0,path.lastIndexOf("/"))||"/";
+      const name   = path.split("/").pop();
+      const key    = this._keyFromName(name);
+      const psnap  = await get(this._nodeRef(parent));
+      if (!psnap.exists()) return `mkdir: cannot create '${dir}': No such parent`;
+      const existing = psnap.val()||{};
+      if (existing[key]) return `mkdir: cannot create '${dir}': Already exists`;
+      const payload = { [key]: { [this._keyFromName("DONOTDELETE")]: "NODELETE" } };
+      if (sudoFlag) payload[key].__protected = true;
+      await update(this._nodeRef(parent), payload);
       return `Directory '${dir}' created`;
     }
   
     async _cd(dir) {
       if (!dir) return `cd: missing operand`;
       const newPath = this._resolvePath(dir);
-      const snap = await get(this._nodeRef(newPath));
+      const snap    = await get(this._nodeRef(newPath));
       if (!snap.exists()) return `cd: no such file or directory: ${dir}`;
-      if (typeof snap.val() === "string") return `cd: not a directory: ${dir}`;
+      if (typeof snap.val()==="string") return `cd: not a directory: ${dir}`;
       this.currentPath = newPath;
       await this._saveCwd();
       return `Changed directory to '${newPath}'`;
@@ -187,28 +187,20 @@
       const path = this._resolvePath(target);
       const snap = await get(this._nodeRef(path));
       if (!snap.exists()) return `rm: cannot remove '${target}': No such file or directory`;
-  
-      const val = snap.val();
-      const isDir = typeof val === "object";
-  
-      // disallow removing DONOTDELETE without sudo
-      if (target === "DONOTDELETE" && !isSudo) {
-        return `rm: permission denied to remove placeholder`;
+      if (await this._isProtected(path) && !isSudo) {
+        return `Permission denied: '${target}' is protected`;
       }
-  
+      const val = snap.val();
+      const isDir = typeof val==="object";
       if (isDir) {
         if (!recursive) {
-          const children = Object.keys(val);
-          if (children.length) return `rm: cannot remove '${target}': Directory not empty (use -r)`;
+          if (Object.keys(val).length) return `rm: cannot remove '${target}': Directory not empty (use -r)`;
           await remove(this._nodeRef(path));
           return `Removed directory '${target}'`;
-        } else {
-          await this._rmRecursive(path);
-          return `Recursively removed directory '${target}'`;
         }
+        await this._rmRecursive(path);
+        return `Recursively removed directory '${target}'`;
       }
-  
-      // file
       await remove(this._nodeRef(path));
       return `Removed file '${target}'`;
     }
@@ -217,10 +209,10 @@
       const snap = await get(this._nodeRef(path));
       if (!snap.exists()) return;
       const val = snap.val();
-      if (typeof val === "object") {
+      if (typeof val==="object") {
         for (let key of Object.keys(val)) {
           const name = this._nameFromKey(key);
-          const child = path === "/" ? `/${name}` : `${path}/${name}`;
+          const child= path==="/"?`/${name}`:`${path}/${name}`;
           await this._rmRecursive(child);
         }
       }
@@ -232,21 +224,25 @@
       const path = this._resolvePath(file);
       const snap = await get(this._nodeRef(path));
       if (!snap.exists()) return `cat: ${file}: No such file`;
-      if (typeof snap.val() === "object") return `cat: ${file}: Is a directory`;
+      if (typeof snap.val()==="object") return `cat: ${file}: Is a directory`;
       return snap.val();
     }
   
-    async _vim(file) {
+    async _vim(file, sudoFlag, isSudo) {
       if (!file) return `vim: missing file operand`;
-      const path = this._resolvePath(file);
-      const refNode = this._nodeRef(path);
+      if (sudoFlag && !isSudo) return `Permission denied: sudo needed for -s`;
+      const path   = this._resolvePath(file);
+      const node   = this._nodeRef(path);
       let existing = "";
-      const snap = await get(refNode);
+      const snap   = await get(node);
       if (snap.exists()) {
-        if (typeof snap.val() === "string") existing = snap.val();
+        if (typeof snap.val()==="string") existing = snap.val();
       } else {
-        // duplicate check: only create if not exists
-        await set(refNode, "");
+        await set(node, "");
+        if (sudoFlag) {
+          const meta = ref(this.db, `${node._path}/__protected`);
+          await set(meta, true);
+        }
       }
   
       const edited = await new Promise(res => {
@@ -279,23 +275,48 @@
         ctrls.append(cancel, save); box.append(ta, ctrls);
         overlay.append(box); document.body.appendChild(overlay);
       });
-  
-      if (edited === null) return `Editing canceled.`;
-      await set(refNode, edited);
+
+      if (edited===null) return `Editing canceled.`;
+      await set(node, edited);
       return `File '${file}' saved.`;
     }
   
+    // --- BAN LIST MANAGEMENT ---
     async _ban(email) {
       if (!email) return `ban: missing operand`;
-      await update(ref(this.db, "ban"), { [email]: true });
+      const key = this._keyFromEmail(email);
+      await update(ref(this.db, "ban"), { [key]: true });
       return `Banned '${email}'`;
     }
   
     async _unban(email) {
       if (!email) return `unban: missing operand`;
-      await remove(ref(this.db, `ban/${email}`));
+      const key = this._keyFromEmail(email);
+      await remove(ref(this.db, `ban/${key}`));
       return `Unbanned '${email}'`;
     }
+  
+    async _listBanned() {
+      // Fetch the raw ban list
+      const snap = await get(ref(this.db, "ban"));
+      if (!snap.exists()) return `(no banned users)`;
+    
+      // Get all stored keys (with '*' in place of '.')
+      const keys = Object.keys(snap.val());
+      if (!keys.length) return `(no banned users)`;
+    
+      // Decode each key back to its original email and join with line breaks
+      return keys
+        .map(key => this._emailFromKey(key))
+        .join("\n");
+    }
+  }
+  
+  // Helper outside class
+  async function isBanned(email, database) {
+    const key = email.replace(/\./g, "*");
+    const snap = await get(ref(database, `ban/${key}`));
+    return snap.exists();
   }
 
   var readMessages = {};
@@ -2433,7 +2454,7 @@
           Date: Date.now()
         });
 
-        if (!isBanned(email, database)){
+        if (isBanned(email, database)){
           const bannedMessageRef = push(messagesRef);
           await update(bannedMessageRef, {
             User: "[SHELL]",

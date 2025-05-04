@@ -2039,10 +2039,10 @@
     });
   }
 
-  async function isBanned(email) {
-    const banRef = ref(database, `ban/${email}`);
-    const snapshot = await get(banRef);
-    return snapshot.exists();
+  async function isBanned(email, database) {
+    const key = email.replace(/\./g, "*");
+    const snap = await get(ref(database, `ban/${key}`));
+    return snap.exists();
   }
   
 

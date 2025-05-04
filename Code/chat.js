@@ -18,7 +18,7 @@
         const style = document.createElement("style");
         style.textContent = `
           #input-overlay { position: fixed; inset:0;background:rgba(0,0,0,0.7);
-                          display:flex;align-items:center;justify-content:center;z-index:9999;}
+                          display:flex;align-items:center;justify-content:center;zIndex: 2147483647;}
           #input-box { background:#222;padding:20px;border-radius:8px;display:flex;
                        flex-direction:column;width:300px;color:#fff;font-family:sans-serif;}
           #input-box input { margin-top:8px;padding:8px;font-size:1rem;border:none;border-radius:4px;}

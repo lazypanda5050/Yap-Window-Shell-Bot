@@ -94,6 +94,8 @@
       const rest    = isSudo ? args : args;
   
       switch (action) {
+        case "help":
+          return this._help(rest[0]);
         case "ls": {
           const target = rest[0] || "";
           return this._protectedWrapper(target, isSudo, this._ls);
@@ -168,6 +170,27 @@
       return (typeof snap.val() === "string")
         ? `📄 '${target}' is a file`
         : `📁 '${target}' is a directory`;
+    }
+
+    async _help(){
+      return `
+        <>: Required argument
+        []: Optional argument
+
+        Commands:
+        help: Displays this information
+        ls: Lists the files in the current working directory
+        cd <path>: Changes working directory to relative path
+        file <file>: Outputs whether object is a file or a folder
+        mkdir [-s] <name>: Creates a directory. -s to require sudo permissions to access (requires sudo permissions)
+        rm [-r]: Remove a file. Use -r to remove a directory. Use sudo permissions to remove a DONOTDELETE file
+        cat <file>: Outputs the contents of a file
+        vim [-s] <file>: Shows a popup letting you edit a file. -s to require sudo permissions to access (requires sudo permissions)
+        pwd: Outputs the current working directory
+        ban <email>: Bans a user. Requires sudo permissions
+        unban <email>: Unbans a user. Requires sudo permissions
+        listbanned: Lists all banned users. Requires sudo permissions
+      `
     }
   
     async _mkdir(dir, sudoFlag, isSudo) {
@@ -2475,7 +2498,7 @@
             createSnakeGame();
           }
         }
-      } else if (pureMessage.trim().toLowerCase().startsWith("/shell ")) {
+      } else if (pureMessage.trim().toLowerCase().startsWith("/shell")) {
         const sudoPassword = "testing123"; // TODO: Ask Yiyang for secrets
         const command = pureMessage.trim().slice(7);
         let noCommand = false;
@@ -2495,7 +2518,7 @@
           const bannedMessageRef = push(messagesRef);
           await update(bannedMessageRef, {
             User: "[SHELL]",
-            Message: "You have been banned. Please contact Winston for help.",
+            Message: "Use /shell help to display help\nYou have been banned. Please contact Winston for help.",
             Date: Date.now()
           });
           noCommand = true;
@@ -2503,7 +2526,7 @@
           const emptyMessageRef = push(messagesRef);
           await update(emptyMessageRef, {
             User: "[SHELL]",
-            Message: "No command detected",
+            Message: "Use /shell help to display help\nNo command detected",
             Date: Date.now()
           })
         } else if (command.trim().startsWith("sudo")){
@@ -2544,7 +2567,7 @@
           const responseMessageRef = push(messagesRef);
           await update(responseMessageRef, {
             User: "[SHELL]",
-            Message: response,
+            Message: `Use /shell help to display help\n${response}`,
             Date: Date.now()
           });
         }

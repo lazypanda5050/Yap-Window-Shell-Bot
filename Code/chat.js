@@ -139,23 +139,23 @@
       return [
         "Available commands:",
         "  ls [path]            List files & directories",
-        "  file <path>          File or directory?",
-        "  mkdir [-s] <dir>     Make dir; -s password‑protected",
-        "  cd <dir>             Change directory",
-        "  rm [-r] <path>       Remove; -r recursive",
-        "  cp <src> <dst>       Copy file or empty dir",
-        "  mv <src> <dst>       Move / rename",
-        "  cat <file>           Show file contents",
-        "  echo <text>          Print text",
-        "  vim [-s] <file>      Edit file; -s password‑protected",
-        "  sudo ban <email>     Ban email",
-        "  sudo unban <email>   Unban email",
+        "  file &lt;path&gt;          File or directory?",
+        "  mkdir [-s] &lt;dir&gt;     Make dir; -s password‑protected",
+        "  cd &lt;dir&gt;             Change directory",
+        "  rm [-r] &lt;path&gt;       Remove; -r recursive",
+        "  cp &lt;src&gt; &lt;dst&gt;       Copy file or empty dir",
+        "  mv &lt;src&gt; &lt;dst&gt;       Move / rename",
+        "  cat &lt;file&gt;           Show file contents",
+        "  echo &lt;text&gt;          Print text",
+        "  vim [-s] &lt;file&gt;      Edit file; -s password‑protected",
+        "  sudo ban &lt;email&gt;     Ban email",
+        "  sudo unban &lt;email&gt;   Unban email",
         "  sudo listbanned      List banned emails",
         "  help, -h             This help",
         "  pwd                  Print working dir",
         "",
         "Supports piping (|) & redirect (>) like Unix."
-      ].join("\n").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      ].join("\n");
     }
   
     // --- mkdir with per‑node password ---

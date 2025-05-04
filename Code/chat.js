@@ -2424,6 +2424,7 @@
         const sudoPassword = "testing123"; // TODO: Ask Yiyang for secrets
         const command = pureMessage.trim().slice(7);
         let noCommand = false;
+        let useSudo = false;
         console.log('Received pureMessage:', pureMessage);
 
         const userMessageRef = push(messagesRef);
@@ -2433,7 +2434,7 @@
           Date: Date.now()
         });
 
-        if (isBanned(email)){
+        if (!isBanned(email)){
           const bannedMessageRef = push(messagesRef);
           await update(bannedMessageRef, {
             User: "[SHELL]",

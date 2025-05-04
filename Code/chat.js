@@ -49,95 +49,94 @@
       return "/" + stack.join("/");
     }
   
-    // --- NAME ENCODING ---
-    _keyFromName(name) {
-      return name.replace(/\./g, "\\period");
-    }
-    _nameFromKey(key) {
-      return key.replace(/\\period/g, ".");
-    }
-  
-    _keyFromEmail(email) {
-      return email.replace(/\./g, "*");
-    }
-    _emailFromKey(key) {
-      return key.replace(/\*/g, ".");
-    }
-  
+    // --- ENCODING HELPERS ---
+    _keyFromName(name)       { return name.replace(/\./g, "\\period"); }
+    _nameFromKey(key)        { return key.replace(/\\period/g, "."); }
+    _keyFromEmail(email)     { return email.replace(/\./g, "*"); }
+    _emailFromKey(key)       { return key.replace(/\*/g, "."); }
     _nodeRef(path) {
       const parts = path === "/"
         ? []
         : path.slice(1).split("/").map(this._keyFromName);
-      const key = [this.basePath, ...parts].join("/");
-      return ref(this.db, key);
+      return ref(this.db, [this.basePath, ...parts].join("/"));
     }
   
     // --- PROTECTION METADATA ---
     async _isProtected(path) {
       const metaKey = path === "/"
         ? "__protected"
-        : path.slice(1).split("/").map(this._keyFromName).join("/") + "__protected";
+        : path
+            .slice(1)
+            .split("/")
+            .map(this._keyFromName)
+            .join("/") + "__protected";
       const snap = await get(ref(this.db, `${this.basePath}/${metaKey}`));
       return snap.exists() && snap.val() === true;
     }
   
-    // --- MAIN EXECUTION (pipes + redirect) ---
+    // --- MAIN EXECUTION: PIPES & REDIRECT ---
     async exec(cmdLine) {
       await this._waitForAuth();
       if (!this._cwdInitialized) await this.initCwd();
   
-      // split on pipes
       const segments = cmdLine.split("|").map(s => s.trim());
       let input = "";
+  
       for (let i = 0; i < segments.length; i++) {
         let segment = segments[i];
-        let redirect = null;
+        let redirectTarget = null;
+  
         if (i === segments.length - 1) {
           const m = segment.match(/(.*)>\s*(\S+)$/);
           if (m) {
             segment = m[1].trim();
-            redirect = m[2];
+            redirectTarget = m[2];
           }
         }
-        const out = await this._runSingle(segment, input);
-        input = out;
-        if (redirect) {
-          await set(this._nodeRef(this._resolvePath(redirect)), out);
-          return "";
+  
+        const output = await this._runSingle(segment, input);
+        input = output;
+  
+        if (redirectTarget) {
+          await set(
+            this._nodeRef(this._resolvePath(redirectTarget)),
+            input
+          );
         }
       }
+  
       return input;
     }
   
+    // --- SINGLE COMMAND EXECUTION ---
     async _runSingle(segment, stdin) {
       const parts = segment.split(/\s+/);
       const cmd   = parts[0];
       const args  = parts.slice(1);
   
       switch (cmd) {
-        case "echo":      return args.join(" ");
-        case "cp":        return this._cp(args[0], args[1]);
-        case "mv":        return this._mv(args[0], args[1]);
-        case "ls":        return this._protectedWrapper(args[0]||"", false, this._ls);
-        case "file":      return this._file(args[0]);
-        case "mkdir":     return this._mkdir(args[0], args.includes("-s"), false);
-        case "sudo":
-          return this.exec(args.join(" "));
-        case "cd":        return this._cd(args[0]||"");
-        case "rm":        return this._rm(args.find(a=>a!=="-r"), args.includes("-r"), false);
-        case "cat":       return stdin || this._cat(args[0]);
-        case "vim":       return this._vim(args[0], args.includes("-s"), false);
-        case "ban":       return this._ban(args[0]);
-        case "unban":     return this._unban(args[0]);
-        case "listbanned":return this._listBanned();
-        case "help":      return this._help();
-        case "-h":        return this._help();
-        case "pwd":       return this.currentPath;
-        default:          return `shell: command not found: ${cmd}`;
+        case "echo":       return args.join(" ");
+        case "cp":         await this._cp(args[0], args[1]); return "";
+        case "mv":         await this._mv(args[0], args[1]); return "";
+        case "ls":         return this._protectedWrapper(args[0]||"", false, this._ls);
+        case "file":       return this._file(args[0]);
+        case "mkdir":      return this._mkdir(args[0], args.includes("-s"), false);
+        case "sudo":       return this.exec(args.join(" "));
+        case "cd":         return this._cd(args[0]||"");
+        case "rm":         return this._rm(args.find(a=>a!=="-r"), args.includes("-r"), false);
+        case "cat":        return stdin || await this._cat(args[0]);
+        case "vim":        return this._vim(args[0], args.includes("-s"), false);
+        case "ban":        return this._ban(args[0]);
+        case "unban":      return this._unban(args[0]);
+        case "listbanned": return this._listBanned();
+        case "help":
+        case "-h":         return this._help();
+        case "pwd":        return this.currentPath;
+        default:           return `shell: command not found: ${cmd}`;
       }
     }
   
-    // Checks protection, then calls fn(arg)
+    // Checks protection before calling fn(arg)
     async _protectedWrapper(arg, isSudo, fn) {
       const path = this._resolvePath(arg || "");
       if (await this._isProtected(path) && !isSudo) {
@@ -146,28 +145,28 @@
       return fn.call(this, arg);
     }
   
-    // --- COMMAND IMPLEMENTATIONS ---
+    // --- BUILT‑IN COMMANDS ---
   
     async _help() {
       return [
         "Available commands:",
         "  ls [path]            List files and directories",
-        "  file <path>          Show whether path is file or directory",
-        "  mkdir [-s] <dir>     Make directory; -s marks it protected (sudo only)",
+        "  file <path>          Show file or directory",
+        "  mkdir [-s] <dir>     Make directory; -s protected (sudo only)",
         "  cd <dir>             Change working directory",
-        "  rm [-r] <path>       Remove file or empty dir; -r for recursive",
-        "  cp <src> <dest>      Copy file or empty directory",
-        "  mv <src> <dest>      Move or rename file/directory",
-        "  cat <file>           Show file contents",
+        "  rm [-r] <path>       Remove file or empty dir; -r recursive",
+        "  cp <src> <dst>       Copy file or empty directory",
+        "  mv <src> <dst>       Move or rename",
+        "  cat <file>           Display file contents",
         "  echo <text>          Print text",
-        "  vim [-s] <file>      Edit file in overlay; -s makes protected (sudo only)",
+        "  vim [-s] <file>      Edit file; -s protected (sudo only)",
         "  sudo ban <email>     Add email to ban list",
-        "  sudo unban <email>   Remove email from ban list",
+        "  sudo unban <email>   Remove from ban list",
         "  sudo listbanned      List all banned emails",
         "  help, -h             Show this help text",
-        "  pwd                  Show current working directory",
+        "  pwd                  Print working directory",
         "",
-        "Piping (|) and redirect (>) are supported as in Unix shells."
+        "Supports piping (|) and redirection (>) as in Unix."
       ].join("\n");
     }
   
@@ -183,15 +182,17 @@
       if (!keys.length) return `(empty directory)`;
       const lines = await Promise.all(keys.map(async key => {
         const name  = this._nameFromKey(key);
-        const child = path==="/"?`/${name}`:`${path}/${name}`;
+        const child = path==="/" ? `/${name}` : `${path}/${name}`;
         const cs    = await get(this._nodeRef(child));
-        return (cs.exists()&&typeof cs.val()==="string")?`📄 ${name}`:`📁 ${name}`;
+        return (cs.exists() && typeof cs.val()==="string")
+          ? `📄 ${name}`
+          : `📁 ${name}`;
       }));
       return lines.join("\n");
     }
   
     async _file(target) {
-      if (!target) return `file: missing operand`;
+      if (!target) return `file: missing operand`;    
       const snap = await get(this._nodeRef(this._resolvePath(target)));
       if (!snap.exists()) return `file: ${target}: No such file or directory`;
       return typeof snap.val()==="string"
@@ -202,15 +203,15 @@
     async _mkdir(dir, sudoFlag, isSudo) {
       if (!dir) return `mkdir: missing operand`;
       if (sudoFlag && !isSudo) return `Permission denied: sudo needed for -s`;
-      const path   = this._resolvePath(dir);
+      const path = this._resolvePath(dir);
       const parent = path.substring(0,path.lastIndexOf("/"))||"/";
       const name   = path.split("/").pop();
       const key    = this._keyFromName(name);
       const psnap  = await get(this._nodeRef(parent));
       if (!psnap.exists()) return `mkdir: cannot create '${dir}': No such parent`;
-      const ex     = psnap.val()||{};
+      const ex = psnap.val()||{};
       if (ex[key]!==undefined) return `mkdir: cannot create '${dir}': Name in use`;
-      const p      = { [key]: { [this._keyFromName("DONOTDELETE")]: "NODELETE" }};
+      const p = { [key]: { [this._keyFromName("DONOTDELETE")]: "NODELETE" }};
       if (sudoFlag) p[key].__protected = true;
       await update(this._nodeRef(parent), p);
       return `Directory '${dir}' created`;
@@ -242,26 +243,26 @@
       return "";
     }
   
-    async _rm(tgt, recursive=false, isSudo=false) {
-      if (!tgt) return `rm: missing operand`;
-      const path = this._resolvePath(tgt);
+    async _rm(target, recursive=false, isSudo=false) {
+      if (!target) return `rm: missing operand`;
+      const path = this._resolvePath(target);
       const snap = await get(this._nodeRef(path));
-      if (!snap.exists()) return `rm: cannot remove '${tgt}': No such file or directory`;
+      if (!snap.exists()) return `rm: cannot remove '${target}': No such file or directory`;
       if (await this._isProtected(path) && !isSudo) {
-        return `Permission denied: '${tgt}' is protected`;
+        return `Permission denied: '${target}' is protected`;
       }
       const val = snap.val();
       if (typeof val==="object") {
         if (!recursive) {
-          if (Object.keys(val).length) return `rm: cannot remove '${tgt}': Directory not empty (use -r)`;
+          if (Object.keys(val).length) return `rm: cannot remove '${target}': Directory not empty (use -r)`;
           await remove(this._nodeRef(path));
-          return `Removed directory '${tgt}'`;
+          return `Removed directory '${target}'`;
         }
         await this._rmRecursive(path);
-        return `Recursively removed directory '${tgt}'`;
+        return `Recursively removed directory '${target}'`;
       }
       await remove(this._nodeRef(path));
-      return `Removed file '${tgt}'`;
+      return `Removed file '${target}'`;
     }
   
     async _rmRecursive(path) {
@@ -271,19 +272,19 @@
       if (typeof val==="object") {
         for (let k of Object.keys(val)) {
           const nm = this._nameFromKey(k);
-          const cp = path==="/"?`/${nm}`:`${path}/${nm}`;
+          const cp = path==="/" ? `/${nm}` : `${path}/${nm}`;
           await this._rmRecursive(cp);
         }
       }
       await remove(this._nodeRef(path));
     }
   
-    async _cat(f) {
-      if (!f) return `cat: missing operand`;
-      const path = this._resolvePath(f);
+    async _cat(file) {
+      if (!file) return `cat: missing operand`;
+      const path = this._resolvePath(file);
       const snap = await get(this._nodeRef(path));
-      if (!snap.exists()) return `cat: ${f}: No such file`;
-      if (typeof snap.val()==="object") return `cat: ${f}: Is a directory`;
+      if (!snap.exists()) return `cat: ${file}: No such file`;
+      if (typeof snap.val()==="object") return `cat: ${file}: Is a directory`;
       return snap.val();
     }
   
@@ -303,23 +304,41 @@
           await set(ref(this.db, `${node._path}/__protected`), true);
         }
       }
-      const edited = await new Promise(res=>{
+      const edited = await new Promise(res => {
         const ov = document.createElement("div");
-        Object.assign(ov.style,{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2147483647});
+        Object.assign(ov.style, {
+          position: "fixed", inset: 0,
+          backgroundColor: "rgba(0,0,0,0.85)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          zIndex: 2147483647
+        });
         const box = document.createElement("div");
-        Object.assign(box.style,{width:"80%",maxWidth:"800px",height:"80vh",background:"#111",padding:"20px",borderRadius:"8px",display:"flex",flexDirection:"column"});
+        Object.assign(box.style, {
+          width: "80%", maxWidth: "800px", height: "80vh",
+          background: "#111", padding: "20px", borderRadius: "8px",
+          display: "flex", flexDirection: "column"
+        });
         const ta = document.createElement("textarea");
         ta.value = existing;
-        Object.assign(ta.style,{flex:1,background:"#222",color:"#eee",border:"none",padding:"10px",fontFamily:"monospace",fontSize:"0.9rem",resize:"none"});
+        Object.assign(ta.style, {
+          flex: 1, background: "#222", color: "#eee",
+          border: "none", padding: "10px",
+          fontFamily: "monospace", fontSize: "0.9rem", resize: "none"
+        });
         const ctr = document.createElement("div");
-        Object.assign(ctr.style,{textAlign:"right",marginTop:"10px"});
-        const cbtn = document.createElement("button"); cbtn.textContent="Cancel"; cbtn.onclick=()=>{ov.remove();res(null)};
-        const sbtn = document.createElement("button"); sbtn.textContent="Save";   sbtn.onclick=()=>{ov.remove();res(ta.value)};
-        ctr.append(cbtn,sbtn); box.append(ta,ctr); ov.append(box); document.body.append(ov);
+        Object.assign(ctr.style, { textAlign: "right", marginTop: "10px" });
+        const cbtn = document.createElement("button");
+        cbtn.textContent = "Cancel";
+        cbtn.onclick = () => { ov.remove(); res(null); };
+        const sbtn = document.createElement("button");
+        sbtn.textContent = "Save";
+        sbtn.onclick = () => { ov.remove(); res(ta.value); };
+        ctr.append(cbtn, sbtn); box.append(ta, ctr); ov.append(box);
+        document.body.append(ov);
       });
-      if (edited===null) return `Editing canceled.`;
+      if (edited === null) return `Editing canceled.`;
       await set(node, edited);
-      return `File '${file}' saved.`;  
+      return `File '${file}' saved.`;
     }
   
     async _ban(email) {
@@ -339,7 +358,9 @@
     async _listBanned() {
       const snap = await get(ref(this.db, "ban"));
       if (!snap.exists()) return `(no banned users)`;
-      return Object.keys(snap.val()).map(k=>this._emailFromKey(k)).join("\n");
+      return Object.keys(snap.val())
+        .map(k => this._emailFromKey(k))
+        .join("\n");
     }
   }
   

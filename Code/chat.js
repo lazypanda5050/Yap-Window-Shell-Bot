@@ -93,22 +93,22 @@
       const rest    = isSudo ? args : args;
   
       switch (action) {
-        case "ls":    return this._protectedWrapper(rest[0]||"", isSudo, this._ls);
-        case "file":  return this._file(rest[0]);
-        case "mkdir": return this._mkdir(rest[0], rest.includes("-s"), isSudo);
-        case "cd":    return this._cd(rest[0]||"");
+        case "ls":         return this._protectedWrapper(rest[0]||"", isSudo, this._ls);
+        case "file":       return this._file(rest[0]);
+        case "mkdir":      return this._mkdir(rest[0], rest.includes("-s"), isSudo);
+        case "cd":         return this._cd(rest[0]||"");
         case "rm": {
           const recursive = rest.includes("-r");
           const target    = rest.find(a=>a!=="-r");
           return this._rm(target, recursive, isSudo);
         }
-        case "cat":   return this._protectedWrapper(rest[0], isSudo, this._cat);
-        case "vim":   return this._vim(rest[0], rest.includes("-s"), isSudo);
-        case "ban":   return isSudo ? this._ban(rest[0])   : "Permission denied";
-        case "unban": return isSudo ? this._unban(rest[0]) : "Permission denied";
-        case "banned":return isSudo ? this._listBanned()   : "Permission denied";
-        case "pwd":   return Promise.resolve(this.currentPath);
-        default:      return `shell: command not found: ${cmdLine}`;
+        case "cat":        return this._protectedWrapper(rest[0], isSudo, this._cat);
+        case "vim":        return this._vim(rest[0], rest.includes("-s"), isSudo);
+        case "ban":        return isSudo ? this._ban(rest[0])   : "Permission denied";
+        case "unban":      return isSudo ? this._unban(rest[0]) : "Permission denied";
+        case "listbanned": return isSudo ? this._listBanned()   : "Permission denied";
+        case "pwd":        return Promise.resolve(this.currentPath);
+        default:           return `shell: command not found: ${cmdLine}`;
       }
     }
   

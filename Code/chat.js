@@ -155,7 +155,7 @@
         "  pwd                  Print working dir",
         "",
         "Supports piping (|) & redirect (>) like Unix."
-      ].join("\n");
+      ].join("\n").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
   
     // --- mkdir with per‑node password ---

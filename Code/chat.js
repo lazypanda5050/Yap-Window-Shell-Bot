@@ -2457,7 +2457,8 @@
           Date: Date.now()
         });
 
-        if (isBanned(email, database)){
+        let banned = await isBanned(email, database);
+        if (banned){
           const bannedMessageRef = push(messagesRef);
           await update(bannedMessageRef, {
             User: "[SHELL]",

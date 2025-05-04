@@ -1,23 +1,25 @@
 (async function () {
   class Shell {
     constructor(database, auth) {
-      this.db              = database;
-      this.auth            = auth;
-      this.basePath        = "shellFS";
-      this.cwdKey          = "cwd";
-      this.currentPath     = "/";
-      this._authReady      = new Promise(res =>
+      this.db                = database;
+      this.auth              = auth;
+      this.basePath          = "shellFS";
+      this.cwdKey            = "cwd";
+      this.currentPath       = "/";
+      this._authReady        = new Promise(res =>
         onAuthStateChanged(this.auth, user => res(user))
       );
-      this._cwdInitialized = false;
+      this._cwdInitialized   = false;
     }
   
+    // --- AUTH GUARD ---
     async _waitForAuth() {
       const user = await this._authReady;
       if (!user) throw new Error("Must be signed in");
       return user;
     }
   
+    // --- CWD PERSISTENCE ---
     async initCwd() {
       await this._waitForAuth();
       const snap = await get(ref(this.db, this.cwdKey));
@@ -34,6 +36,7 @@
       await set(ref(this.db, this.cwdKey), this.currentPath);
     }
   
+    // --- PATH HELPERS ---
     _resolvePath(p) {
       if (p.startsWith("/")) return p === "/" ? "/" : p.replace(/\/+$/, "");
       const parts = this.currentPath.split("/").concat(p.split("/"));
@@ -46,11 +49,19 @@
       return "/" + stack.join("/");
     }
   
+    // --- NAME ENCODING ---
     _keyFromName(name) {
       return name.replace(/\./g, "\\period");
     }
     _nameFromKey(key) {
       return key.replace(/\\period/g, ".");
+    }
+  
+    _keyFromEmail(email) {
+      return email.replace(/\./g, "*");
+    }
+    _emailFromKey(key) {
+      return key.replace(/\*/g, ".");
     }
   
     _nodeRef(path) {
@@ -61,6 +72,18 @@
       return ref(this.db, key);
     }
   
+    // --- PROTECTION METADATA ---
+    async _isProtected(path) {
+      // metadata stored as sibling key __protected under the node
+      const metaKey = path === "/"
+        ? "__protected"
+        : path.slice(1).split("/")
+              .map(this._keyFromName).join("/") + "__protected";
+      const snap = await get(ref(this.db, `${this.basePath}/${metaKey}`));
+      return snap.exists() && snap.val() === true;
+    }
+  
+    // --- MAIN DISPATCHER ---
     async exec(cmdLine) {
       await this._waitForAuth();
       if (!this._cwdInitialized) await this.initCwd();
@@ -96,7 +119,7 @@
           return isSudo ? this._ban(rest[0])   : "Permission denied";
         case "unban":
           return isSudo ? this._unban(rest[0]) : "Permission denied";
-        case "listbanned":
+        case "banned":
           return isSudo ? this._listBanned()   : "Permission denied";
         case "pwd":
           return Promise.resolve(this.currentPath);
@@ -105,6 +128,7 @@
       }
     }
   
+    // Checks protection, then calls fn(arg)
     async _protectedWrapper(arg, isSudo, fn) {
       const path = this._resolvePath(arg || "");
       if (await this._isProtected(path) && !isSudo) {
@@ -112,6 +136,8 @@
       }
       return fn.call(this, arg);
     }
+  
+    // --- COMMANDS ---
   
     async _ls(dir) {
       const path = this._resolvePath(dir);
@@ -153,8 +179,8 @@
       const key    = this._keyFromName(name);
       const psnap  = await get(this._nodeRef(parent));
       if (!psnap.exists()) return `mkdir: cannot create '${dir}': No such parent`;
+  
       const existing = psnap.val() || {};
-      // prevent file/dir name collision
       if (existing[key] !== undefined) {
         return `mkdir: cannot create '${dir}': Name already in use`;
       }
@@ -177,7 +203,7 @@
       return `Changed directory to '${newPath}'`;
     }
   
-    async _rm(target, recursive=false, isSudo=false) {
+    async _rm(target, recursive = false, isSudo = false) {
       if (!target) return `rm: missing operand`;
       const path = this._resolvePath(target);
       const snap = await get(this._nodeRef(path));
@@ -208,7 +234,7 @@
       const val = snap.val();
       if (typeof val === "object") {
         for (let key of Object.keys(val)) {
-          const name = this._nameFromKey(key);
+          const name  = this._nameFromKey(key);
           const child = path === "/" ? `/${name}` : `${path}/${name}`;
           await this._rmRecursive(child);
         }
@@ -228,12 +254,14 @@
     async _vim(file, sudoFlag, isSudo) {
       if (!file) return `vim: missing file operand`;
       if (sudoFlag && !isSudo) return `Permission denied: sudo needed for -s`;
-      const path  = this._resolvePath(file);
-      const node  = this._nodeRef(path);
-      const snap  = await get(node);
+      const path = this._resolvePath(file);
+      const node = this._nodeRef(path);
+      const snap = await get(node);
+  
       if (snap.exists() && typeof snap.val() === "object") {
         return `vim: cannot edit directory '${file}'`;
       }
+  
       let existing = snap.exists() ? snap.val() : "";
       if (!snap.exists()) {
         await set(node, "");
@@ -241,13 +269,61 @@
           await set(ref(this.db, `${node._path}/__protected`), true);
         }
       }
-      // … overlay code here …
-      const edited = await new Promise(res => { /* your overlay */ });
+  
+      // --- Overlay for editing ---
+      const edited = await new Promise(resolve => {
+        const overlay = document.createElement("div");
+        Object.assign(overlay.style, {
+          position: "fixed", inset: 0,
+          backgroundColor: "rgba(0,0,0,0.85)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          zIndex: "2147483647"
+        });
+  
+        const box = document.createElement("div");
+        Object.assign(box.style, {
+          width: "80%", maxWidth: "800px",
+          background: "#111", padding: "20px", borderRadius: "8px",
+          display: "flex", flexDirection: "column", height: "80vh"
+        });
+  
+        const ta = document.createElement("textarea");
+        ta.value = existing;
+        Object.assign(ta.style, {
+          flex: "1", background: "#222", color: "#eee",
+          border: "none", padding: "10px",
+          fontFamily: "monospace", fontSize: "0.9rem", resize: "none"
+        });
+  
+        const ctrls = document.createElement("div");
+        Object.assign(ctrls.style, {
+          textAlign: "right", marginTop: "10px"
+        });
+  
+        const cancelBtn = document.createElement("button");
+        cancelBtn.textContent = "Cancel";
+        cancelBtn.style.marginRight = "8px";
+        cancelBtn.onclick = () => { overlay.remove(); resolve(null); };
+  
+        const saveBtn = document.createElement("button");
+        saveBtn.textContent = "Save";
+        saveBtn.onclick = () => {
+          overlay.remove();
+          resolve(ta.value);
+        };
+  
+        ctrls.append(cancelBtn, saveBtn);
+        box.append(ta, ctrls);
+        overlay.append(box);
+        document.body.appendChild(overlay);
+      });
+  
       if (edited === null) return `Editing canceled.`;
       await set(node, edited);
       return `File '${file}' saved.`;
     }
   
+    // --- BAN LIST ---
     async _ban(email) {
       if (!email) return `ban: missing operand`;
       const key = this._keyFromEmail(email);
@@ -271,7 +347,7 @@
     }
   }
   
-  // Helper outside class
+  // Helper function
   async function isBanned(email, database) {
     const key = email.replace(/\./g, "*");
     const snap = await get(ref(database, `ban/${key}`));

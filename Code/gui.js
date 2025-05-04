@@ -26,7 +26,7 @@
 			transform: translateX(-50%);
 			width: 40%;
 			height: 50%;
-			z-index: 1000000;
+			z-index: 10000;
 			background-color: ${isDark ? "#333" : "#fff"};
 			color: ${isDark ? "#ddd" : "#333"};
 			font-family: 'Aptos',
@@ -657,7 +657,7 @@
 			border: 1px solid ${isDark ? "#555555" : "#e0e0e0"};
 			border-radius: 8px;
 			padding: 16px;
-			z-index: 3000000;
+			z-index: 30000;
 		}
 
 		.link-input-group {
@@ -867,7 +867,7 @@
 		border-radius: 5px;
 		padding: 5px;
 		display: none;
-		z-index: 3000000;
+		z-index: 30000;
 		max-height: 150px;
 		overflow-y: auto;
 		font-size: 12px;

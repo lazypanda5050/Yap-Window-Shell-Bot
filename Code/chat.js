@@ -13,38 +13,99 @@
     }
   
     // --- Overlays for prompting ---
-    _promptText(labelText) {
-      return new Promise(res => {
+    async _promptText(labelText) {
+      return new Promise(resolve => {
+        // 1. Create and inject styles
         const style = document.createElement("style");
         style.textContent = `
-          #input-overlay { position: fixed; inset:0;background:rgba(0,0,0,0.7);
-                          display:flex;align-items:center;justify-content:center;zIndex: 2147483647;}
-          #input-box { background:#222;padding:20px;border-radius:8px;display:flex;
-                       flex-direction:column;width:300px;color:#fff;font-family:sans-serif;}
-          #input-box input { margin-top:8px;padding:8px;font-size:1rem;border:none;border-radius:4px;}
-          #input-box .buttons { margin-top:12px; text-align:right; }
-          #input-box button { margin-left:8px;padding:6px 12px;font-size:1rem;border:none;
-                               border-radius:4px;cursor:pointer;}
+          #input-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000002;
+          }
+          #input-box {
+            background: #222;
+            padding: 20px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            width: 300px;
+            color: #fff;
+            font-family: sans-serif;
+          }
+          #input-box label {
+            font-size: 1rem;
+          }
+          #input-box input {
+            margin-top: 8px;
+            padding: 8px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 4px;
+          }
+          #input-box .buttons {
+            margin-top: 12px;
+            text-align: right;
+          }
+          #input-box button {
+            margin-left: 8px;
+            padding: 6px 12px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+          }
         `;
         document.head.appendChild(style);
-  
-        const ov = document.createElement("div"); ov.id = "input-overlay";
-        const box = document.createElement("div"); box.id = "input-box";
-        const label = document.createElement("div"); label.textContent = labelText;
-        const input = document.createElement("input"); input.type = "password";
-        const btns = document.createElement("div"); btns.className = "buttons";
-        const ok = document.createElement("button"); ok.textContent = "OK";
-        const cancel = document.createElement("button"); cancel.textContent = "Cancel";
-  
-        ok.onclick = () => { cleanup(); res(input.value); };
-        cancel.onclick = () => { cleanup(); res(null); };
-  
-        btns.append(cancel, ok);
-        box.append(label, input, btns);
-        ov.append(box);
-        document.body.appendChild(ov);
-  
-        function cleanup() { ov.remove(); style.remove(); }
+    
+        // 2. Build overlay elements
+        const overlay = document.createElement("div");
+        overlay.id = "input-overlay";
+    
+        const box = document.createElement("div");
+        box.id = "input-box";
+    
+        const label = document.createElement("label");
+        label.textContent = labelText;
+    
+        const input = document.createElement("input");
+        input.type = "text";
+    
+        const buttons = document.createElement("div");
+        buttons.className = "buttons";
+    
+        const cancelBtn = document.createElement("button");
+        cancelBtn.textContent = "Cancel";
+        cancelBtn.onclick = () => {
+          cleanup();
+          resolve(null);
+        };
+    
+        const okBtn = document.createElement("button");
+        okBtn.textContent = "OK";
+        okBtn.onclick = () => {
+          const val = input.value;
+          cleanup();
+          resolve(val);
+        };
+    
+        buttons.append(cancelBtn, okBtn);
+        box.append(label, input, buttons);
+        overlay.append(box);
+        document.body.appendChild(overlay);
+    
+        // 3. Cleanup function
+        function cleanup() {
+          overlay.remove();
+          style.remove();
+        }
+    
+        // 4. Auto-focus input
+        input.focus();
       });
     }
   
@@ -1969,7 +2030,7 @@
         align-items: center;
         border-radius: 10px;
         box-shadow: 0 0 10px rgba(0,0,0,0.5);
-        z-index: 2000001;
+        z-index: 20001;
       }
       #pw-box {
         width: 90%;

@@ -153,26 +153,24 @@
     // --- BUILT‑IN COMMANDS ---
   
     async _help() {
-      return [
-        "Available commands:",
-        "  ls [path]            List files and directories",
-        "  file <path>          Show file or directory",
-        "  mkdir [-s] <dir>     Make directory; -s protected (sudo only)",
-        "  cd <dir>             Change working directory",
-        "  rm [-r] <path>       Remove file or empty dir; -r recursive",
-        "  cp <src> <dst>       Copy file or empty directory",
-        "  mv <src> <dst>       Move or rename",
-        "  cat <file>           Display file contents",
-        "  echo <text>          Print text",
-        "  vim [-s] <file>      Edit file; -s protected (sudo only)",
-        "  sudo ban <email>     Add email to ban list",
-        "  sudo unban <email>   Remove from ban list",
-        "  sudo listbanned      List all banned emails",
-        "  help, -h             Show this help text",
-        "  pwd                  Print working directory",
-        "",
-        "Supports piping (|) and redirection (>) as in Unix."
-      ].join("\n");
+      return `Available commands:
+      ls [path]            List files and directories
+      file <path>          Show file or directory
+      mkdir [-s] <dir>     Make directory; -s marks it protected (sudo only)
+      cd <dir>             Change working directory
+      rm [-r] <path>       Remove file or empty dir; -r recursive
+      cp <src> <dst>       Copy file or empty directory
+      mv <src> <dst>       Move or rename file/directory
+      cat <file>           Display file contents
+      echo <text>          Print text
+      vim [-s] <file>      Edit file in overlay; -s makes protected (sudo only)
+      sudo ban <email>     Add email to ban list
+      sudo unban <email>   Remove email from ban list
+      sudo listbanned      List all banned emails
+      help, -h             Show this help text
+      pwd                  Print working directory
+    
+    Supports piping (|) and redirect (>) as in Unix shells.`;
     }
   
     async _ls(dir) {

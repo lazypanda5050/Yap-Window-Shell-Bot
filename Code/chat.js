@@ -1,15 +1,59 @@
 (async function () {
   class Shell {
-    constructor(database, auth) {
-      this.db                = database;
-      this.auth              = auth;
-      this.basePath          = "shellFS";
-      this.cwdKey            = "cwd";
-      this.currentPath       = "/";
-      this._authReady        = new Promise(res =>
+    constructor(database, auth, masterPassword) {
+      this.db              = database;
+      this.auth            = auth;
+      this.masterPassword  = masterPassword;    // the password for -s
+      this.basePath        = "shellFS";
+      this.cwdKey          = "cwd";
+      this.currentPath     = "/";
+      this._authReady      = new Promise(res =>
         onAuthStateChanged(this.auth, user => res(user))
       );
-      this._cwdInitialized   = false;
+      this._cwdInitialized = false;
+    }
+  
+    // --- UTIL: overlay prompt for password ---
+    _promptPassword(promptText = "Enter password:") {
+      return new Promise(resolve => {
+        // style sheet
+        const style = document.createElement("style");
+        style.textContent = `
+          #pw-overlay { position: fixed; inset:0;
+            background: rgba(0,0,0,0.7);
+            display: flex; align-items: center; justify-content: center;
+            z-index:2147483647;
+          }
+          #pw-box { background:#222; padding:20px; border-radius:8px;
+            display:flex; flex-direction:column; width:300px;
+          }
+          #pw-box input { margin-top:8px; padding:8px; font-size:1rem; }
+          #pw-box button { margin-top:12px; padding:8px; font-size:1rem; }
+        `;
+        document.head.appendChild(style);
+  
+        const overlay = document.createElement("div");
+        overlay.id = "pw-overlay";
+        const box = document.createElement("div");
+        box.id = "pw-box";
+        const label = document.createElement("div");
+        label.textContent = promptText;
+        const input = document.createElement("input");
+        input.type = "password";
+        const btn  = document.createElement("button");
+        btn.textContent = "OK";
+  
+        btn.onclick = () => {
+          const val = input.value;
+          overlay.remove();
+          style.remove();
+          resolve(val);
+        };
+  
+        box.append(label, input, btn);
+        overlay.append(box);
+        document.body.appendChild(overlay);
+      });
     }
   
     // --- AUTH GUARD ---
@@ -31,372 +75,299 @@
       }
       this._cwdInitialized = true;
     }
-  
     async _saveCwd() {
       await set(ref(this.db, this.cwdKey), this.currentPath);
     }
   
-    // --- PATH HELPERS ---
+    // --- PATH & KEY HELPERS ---
     _resolvePath(p) {
       if (p.startsWith("/")) return p === "/" ? "/" : p.replace(/\/+$/, "");
       const parts = this.currentPath.split("/").concat(p.split("/"));
       const stack = [];
       for (let part of parts) {
-        if (!part || part === ".") continue;
-        if (part === "..") stack.pop();
+        if (!part||part===".") continue;
+        if (part==="..") stack.pop();
         else stack.push(part);
       }
       return "/" + stack.join("/");
     }
-  
-    // --- ENCODING HELPERS ---
-    _keyFromName(name)       { return name.replace(/\./g, "\\period"); }
-    _nameFromKey(key)        { return key.replace(/\\period/g, "."); }
-    _keyFromEmail(email)     { return email.replace(/\./g, "*"); }
-    _emailFromKey(key)       { return key.replace(/\*/g, "."); }
+    _keyFromName(n)   { return n.replace(/\./g, "\\period"); }
+    _nameFromKey(k)   { return k.replace(/\\period/g, "."); }
+    _keyFromEmail(e)  { return e.replace(/\./g,"*"); }
+    _emailFromKey(k)  { return k.replace(/\*/g, "."); }
     _nodeRef(path) {
-      const parts = path === "/"
-        ? []
-        : path.slice(1).split("/").map(this._keyFromName);
+      const parts = path==="/" ? [] : path.slice(1).split("/").map(this._keyFromName);
       return ref(this.db, [this.basePath, ...parts].join("/"));
     }
   
-    // --- PROTECTION METADATA ---
-    async _isProtected(path) {
-      const metaKey = path === "/"
-        ? "__protected"
-        : path
-            .slice(1)
-            .split("/")
-            .map(this._keyFromName)
-            .join("/") + "__protected";
-      const snap = await get(ref(this.db, `${this.basePath}/${metaKey}`));
-      return snap.exists() && snap.val() === true;
+    // --- PROTECTION / PASSWORD CHECK ---
+    async _checkAccess(path, isSudo, needsPassword) {
+      if (isSudo) return true;
+      if (!needsPassword) return true;
+      const pwd = await this._promptPassword();
+      return pwd === this.masterPassword;
     }
   
-    // --- MAIN EXECUTION: PIPES & REDIRECT ---
+    // --- MAIN EXECUTION: pipes & redirects ---
     async exec(cmdLine) {
       await this._waitForAuth();
       if (!this._cwdInitialized) await this.initCwd();
   
-      const segments = cmdLine.split("|").map(s => s.trim());
+      const segments = cmdLine.split("|").map(s=>s.trim());
       let input = "";
-  
-      for (let i = 0; i < segments.length; i++) {
-        let segment = segments[i];
-        let redirectTarget = null;
-  
-        if (i === segments.length - 1) {
-          const m = segment.match(/(.*)>\s*(\S+)$/);
-          if (m) {
-            segment = m[1].trim();
-            redirectTarget = m[2];
-          }
+      for (let i=0; i<segments.length; i++) {
+        let seg = segments[i], redirect=null;
+        if (i===segments.length-1) {
+          const m = seg.match(/(.*)>\s*(\S+)$/);
+          if (m) { seg=m[1].trim(); redirect=m[2]; }
         }
-  
-        const output = await this._runSingle(segment, input);
-        input = output;
-  
-        if (redirectTarget) {
-          await set(
-            this._nodeRef(this._resolvePath(redirectTarget)),
-            input
-          );
+        const out = await this._runSingle(seg, input);
+        input = out;
+        if (redirect) {
+          await set(this._nodeRef(this._resolvePath(redirect)), input);
         }
       }
-  
       return input;
     }
   
-    // --- SINGLE COMMAND EXECUTION ---
+    // --- SINGLE COMMAND DISPATCH ---
     async _runSingle(segment, stdin) {
-      const parts = segment.split(/\s+/);
-      const cmd   = parts[0];
-      const args  = parts.slice(1);
+      const [cmd, ...args] = segment.split(/\s+/);
+      const isSudo = cmd==="sudo";
+      const action= isSudo ? args.shift() : cmd;
+      const rest  = isSudo ? args : args;
   
-      switch (cmd) {
+      switch(action) {
         case "echo":
-        // If no arguments, echo the piped-in stdin
-          if (args.length === 0) {
-            return stdin;
-          }
-          return args.join(" ");
-        case "cp":         await this._cp(args[0], args[1]); return "";
-        case "mv":         await this._mv(args[0], args[1]); return "";
-        case "ls":         return this._protectedWrapper(args[0]||"", false, this._ls);
-        case "file":       return this._file(args[0]);
-        case "mkdir":      return this._mkdir(args[0], args.includes("-s"), false);
-        case "sudo":       return this.exec(args.join(" "));
-        case "cd":         return this._cd(args[0]||"");
-        case "rm":         return this._rm(args.find(a=>a!=="-r"), args.includes("-r"), false);
-        case "cat":        return stdin || await this._cat(args[0]);
-        case "vim":        return this._vim(args[0], args.includes("-s"), false);
-        case "ban":        return this._ban(args[0]);
-        case "unban":      return this._unban(args[0]);
-        case "listbanned": return this._listBanned();
+          return rest.length? rest.join(" ") : stdin;
+        case "cp":   return await this._cp(rest[0],rest[1]);
+        case "mv":   return await this._mv(rest[0],rest[1]);
+        case "ls":   return await this._ls(rest[0]||"", isSudo);
+        case "file": return await this._file(rest[0], isSudo);
+        case "mkdir":return await this._mkdir(rest[0],rest.includes("-s"), isSudo);
+        case "cd":   return await this._cd(rest[0]||"");
+        case "rm":   return await this._rm(rest.find(a=>a!=="-r"),rest.includes("-r"), isSudo);
+        case "cat":  return stdin || await this._cat(rest[0], isSudo);
+        case "vim":  return await this._vim(rest[0],rest.includes("-s"), isSudo);
+        case "ban":     return await this._ban(rest[0]);
+        case "unban":   return await this._unban(rest[0]);
+        case "listbanned": return await this._listBanned();
         case "help":
-        case "-h":         return this._help();
-        case "pwd":        return this.currentPath;
-        default:           return `shell: command not found: ${cmd}`;
+        case "-h":      return await this._help();
+        case "pwd":     return this.currentPath;
+        default:
+          return `shell: command not found: ${action}`;
       }
     }
   
-    // Checks protection before calling fn(arg)
-    async _protectedWrapper(arg, isSudo, fn) {
-      const path = this._resolvePath(arg || "");
-      if (await this._isProtected(path) && !isSudo) {
-        return `Permission denied: '${arg}' is protected`;
-      }
-      return fn.call(this, arg);
-    }
-  
-    // --- BUILT‑IN COMMANDS ---
+    // --- COMMANDS ---
   
     async _help() {
       return [
         "Available commands:",
-        "  ls [path]            List files and directories",
-        "  file <path>          Show file or directory",
-        "  mkdir [-s] <dir>     Make directory; -s marks it protected (sudo only)",
-        "  cd <dir>             Change working directory",
-        "  rm [-r] <path>       Remove file or empty dir; -r recursive",
-        "  cp <src> <dst>       Copy file or empty directory",
-        "  mv <src> <dst>       Move or rename file or directory",
-        "  cat <file>           Display file contents",
+        "  ls [path]            List files & dirs",
+        "  file <path>          File or directory?",
+        "  mkdir [-s] <dir>     Make dir; -s password‑protected",
+        "  cd <dir>             Change directory",
+        "  rm [-r] <path>       Remove; -r recursive",
+        "  cp <src> <dst>       Copy file or empty dir",
+        "  mv <src> <dst>       Move / rename",
+        "  cat <file>           Show file",
         "  echo <text>          Print text",
-        "  vim [-s] <file>      Edit file in overlay; -s makes protected (sudo only)",
-        "  sudo ban <email>     Add email to ban list",
-        "  sudo unban <email>   Remove email from ban list",
-        "  sudo listbanned      List all banned emails",
-        "  help, -h             Show this help text",
-        "  pwd                  Print working directory",
+        "  vim [-s] <file>      Edit file; -s password‑protected",
+        "  sudo ban <email>     Ban email",
+        "  sudo unban <email>   Unban email",
+        "  sudo listbanned      List banned emails",
+        "  help, -h             This help",
+        "  pwd                  Print working dir",
         "",
-        "Supports piping (|) and redirect (>) as in Unix."
-      ].join("\n").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");;
+        "Supports piping (|) & redirect (>) like Unix."
+      ].join("\n");
     }
   
-    async _ls(dir) {
-      const path = this._resolvePath(dir);
-      const snap = await get(this._nodeRef(path));
-      if (!snap.exists()) return `ls: cannot access '${dir}': No such file or directory`;
-      const val = snap.val();
-      if (typeof val === "string") {
-        return `📄 ${this._nameFromKey(dir||path.split("/").pop())}`;
-      }
-      const keys = Object.keys(val);
-      if (!keys.length) return `(empty directory)`;
-      const lines = await Promise.all(keys.map(async key => {
-        const name  = this._nameFromKey(key);
-        const child = path==="/" ? `/${name}` : `${path}/${name}`;
-        const cs    = await get(this._nodeRef(child));
-        return (cs.exists() && typeof cs.val()==="string")
-          ? `📄 ${name}`
-          : `📁 ${name}`;
+    async _ls(dir, isSudo) {
+      const p = this._resolvePath(dir);
+      if (!await this._checkAccess(p,isSudo,false))
+        return `Permission denied: ${dir}`;
+      const snap = await get(this._nodeRef(p));
+      if (!snap.exists()) return `ls: no such file or dir: ${dir}`;
+      const val=snap.val();
+      if (typeof val==="string")
+        return `📄 ${this._nameFromKey(dir||p.split("/").pop())}`;
+      const keys=Object.keys(val);
+      if (!keys.length) return `(empty dir)`;
+      const lines = await Promise.all(keys.map(async k=>{
+        const nm=this._nameFromKey(k), cp=p==="/"?`/${nm}`:`${p}/${nm}`;
+        const cs=await get(this._nodeRef(cp));
+        return (cs.exists()&&typeof cs.val()==="string")?`📄 ${nm}`:`📁 ${nm}`;
       }));
       return lines.join("\n");
     }
   
-    async _file(target) {
-      if (!target) return `file: missing operand`;    
-      const snap = await get(this._nodeRef(this._resolvePath(target)));
-      if (!snap.exists()) return `file: ${target}: No such file or directory`;
-      return typeof snap.val()==="string"
+    async _file(target,isSudo) {
+      if (!target) return `file: missing operand`;
+      const p=this._resolvePath(target);
+      if (!await this._checkAccess(p,isSudo,false))
+        return `Permission denied: ${target}`;
+      const snap=await get(this._nodeRef(p));
+      if (!snap.exists()) return `file: ${target}: no such file or dir`;
+      return (typeof snap.val()==="string")
         ? `📄 '${target}' is a file`
         : `📁 '${target}' is a directory`;
     }
   
-    async _mkdir(dir, sudoFlag, isSudo) {
+    async _mkdir(dir,sFlag,isSudo) {
       if (!dir) return `mkdir: missing operand`;
-      if (sudoFlag && !isSudo) return `Permission denied: sudo needed for -s`;
-      const path = this._resolvePath(dir);
-      const parent = path.substring(0,path.lastIndexOf("/"))||"/";
-      const name   = path.split("/").pop();
-      const key    = this._keyFromName(name);
-      const psnap  = await get(this._nodeRef(parent));
-      if (!psnap.exists()) return `mkdir: cannot create '${dir}': No such parent`;
-      const ex = psnap.val()||{};
-      if (ex[key]!==undefined) return `mkdir: cannot create '${dir}': Name in use`;
-      const p = { [key]: { [this._keyFromName("DONOTDELETE")]: "NODELETE" }};
-      if (sudoFlag) p[key].__protected = true;
-      await update(this._nodeRef(parent), p);
-      return `Directory '${dir}' created`;
+      const p=this._resolvePath(dir);
+      const parent = p.substring(0,p.lastIndexOf("/"))||"/";
+      const key = this._keyFromName(p.split("/").pop());
+      const psnap=await get(this._nodeRef(parent));
+      if (!psnap.exists()) return `mkdir: parent not found: ${dir}`;
+      const ex=psnap.val()||{};
+      if (ex[key]!==undefined) return `mkdir: name in use: ${dir}`;
+      const needsPwd = sFlag;
+      if (!await this._checkAccess(p,isSudo,needsPwd))
+        return `Permission denied or incorrect password`;
+      const payload = { [key]:{ [this._keyFromName("DONOTDELETE")]:"NODELETE" }};
+      await update(this._nodeRef(parent), payload);
+      return `Directory '${dir}' created${sFlag?" (password‑protected)":""}`;
     }
   
     async _cd(dir) {
       if (!dir) return `cd: missing operand`;
-      const np   = this._resolvePath(dir);
-      const snap = await get(this._nodeRef(np));
-      if (!snap.exists()) return `cd: no such file or directory: ${dir}`;
+      const np=this._resolvePath(dir);
+      const snap=await get(this._nodeRef(np));
+      if (!snap.exists()) return `cd: no such file or dir: ${dir}`;
       if (typeof snap.val()==="string") return `cd: not a directory: ${dir}`;
-      this.currentPath = np;
+      this.currentPath=np;
       await this._saveCwd();
       return `Changed directory to '${np}'`;
     }
   
-    // Copy file or empty directory
-    async _cp(src, dst) {
-      if (!src || !dst) return `cp: missing operand`;
-      
-      const srcPath  = this._resolvePath(src);
-      const dstPath  = this._resolvePath(dst);
-      const srcSnap  = await get(this._nodeRef(srcPath));
-      if (!srcSnap.exists()) {
-        return `cp: cannot stat '${src}': No such file or directory`;
-      }
-
-      // Perform the copy
-      await set(this._nodeRef(dstPath), srcSnap.val());
+    async _cp(src,dst) {
+      if (!src||!dst) return `cp: missing operand`;
+      const sp=this._resolvePath(src), dp=this._resolvePath(dst);
+      const ss=await get(this._nodeRef(sp));
+      if (!ss.exists()) return `cp: no such file or dir: ${src}`;
+      await set(this._nodeRef(dp), ss.val());
       return `Copied '${src}' to '${dst}'`;
     }
   
-    // Move (rename) file or directory
-    async _mv(src, dst) {
-      if (!src || !dst) return `mv: missing operand`;
-
-      const srcPath = this._resolvePath(src);
-      const dstPath = this._resolvePath(dst);
-      const srcSnap = await get(this._nodeRef(srcPath));
-      if (!srcSnap.exists()) {
-        return `mv: cannot stat '${src}': No such file or directory`;
+    async _mv(src,dst) {
+      if (!src||!dst) return `mv: missing operand`;
+      const sp=this._resolvePath(src), dp=this._resolvePath(dst);
+      const ss=await get(this._nodeRef(sp));
+      if (!ss.exists()) return `mv: no such file or dir: ${src}`;
+      const ds=await get(this._nodeRef(dp));
+      let final=dp;
+      if (ds.exists()&&typeof ds.val()==="object") {
+        const bn=sp.split("/").pop();
+        final=dp==="/"?`/${bn}`:`${dp}/${bn}`;
       }
-
-      // If dst is an existing directory, move INTO it
-      const dstSnap = await get(this._nodeRef(dstPath));
-      let finalDst;
-      if (dstSnap.exists() && typeof dstSnap.val() === "object") {
-        const baseName = srcPath.split("/").pop();
-        finalDst = dstPath === "/"
-          ? `/${baseName}`
-          : `${dstPath}/${baseName}`;
-      } else {
-        finalDst = dstPath;
-      }
-
-      // Copy then remove original
-      await set(this._nodeRef(finalDst), srcSnap.val());
-      const isDir = typeof srcSnap.val() === "object";
-      await this._rm(src, isDir, true);   // use sudo‑true to bypass protection
-      return `Moved '${src}' to '${this._nameFromKey(finalDst.split("/").pop())}'`;
+      await set(this._nodeRef(final), ss.val());
+      const isDir=typeof ss.val()==="object";
+      await this._rm(src,isDir,true);
+      return `Moved '${src}' to '${this._nameFromKey(final.split("/").pop())}'`;
     }
   
-    async _rm(target, recursive=false, isSudo=false) {
+    async _rm(target,recursive=false,isSudo=false) {
       if (!target) return `rm: missing operand`;
-      const path = this._resolvePath(target);
-      const snap = await get(this._nodeRef(path));
-      if (!snap.exists()) return `rm: cannot remove '${target}': No such file or directory`;
-      if (await this._isProtected(path) && !isSudo) {
-        return `Permission denied: '${target}' is protected`;
-      }
-      const val = snap.val();
+      const p=this._resolvePath(target);
+      const snap=await get(this._nodeRef(p));
+      if (!snap.exists()) return `rm: no such file or dir: ${target}`;
+      // block DONOTDELETE
+      if (p.split("/").pop()===this._keyFromName("DONOTDELETE") && !isSudo)
+        return `rm: permission denied to remove placeholder`;
+      if (await this._isProtected(p) && !isSudo)
+        return `Permission denied: ${target}`;
+      const val=snap.val();
       if (typeof val==="object") {
         if (!recursive) {
-          if (Object.keys(val).length) return `rm: cannot remove '${target}': Directory not empty (use -r)`;
-          await remove(this._nodeRef(path));
+          if (Object.keys(val).length)
+            return `rm: directory not empty (use -r)`;
+          await remove(this._nodeRef(p));
           return `Removed directory '${target}'`;
         }
-        await this._rmRecursive(path);
+        await this._rmRecursive(p);
         return `Recursively removed directory '${target}'`;
       }
-      await remove(this._nodeRef(path));
+      await remove(this._nodeRef(p));
       return `Removed file '${target}'`;
     }
   
-    async _rmRecursive(path) {
-      const snap = await get(this._nodeRef(path));
+    async _rmRecursive(p) {
+      const snap=await get(this._nodeRef(p));
       if (!snap.exists()) return;
-      const val = snap.val();
+      const val=snap.val();
       if (typeof val==="object") {
         for (let k of Object.keys(val)) {
-          const nm = this._nameFromKey(k);
-          const cp = path==="/" ? `/${nm}` : `${path}/${nm}`;
+          const nm=this._nameFromKey(k);
+          const cp=p==="/"?`/${nm}`:`${p}/${nm}`;
           await this._rmRecursive(cp);
         }
       }
-      await remove(this._nodeRef(path));
+      await remove(this._nodeRef(p));
     }
   
-    async _cat(file) {
+    async _cat(file,isSudo) {
       if (!file) return `cat: missing operand`;
-      const path = this._resolvePath(file);
-      const snap = await get(this._nodeRef(path));
-      if (!snap.exists()) return `cat: ${file}: No such file`;
-      if (typeof snap.val()==="object") return `cat: ${file}: Is a directory`;
+      const p=this._resolvePath(file);
+      if (!await this._checkAccess(p,isSudo,false))
+        return `Permission denied: ${file}`;
+      const snap=await get(this._nodeRef(p));
+      if (!snap.exists()) return `cat: no such file: ${file}`;
+      if (typeof snap.val()==="object") return `cat: is a directory: ${file}`;
       return snap.val();
     }
   
-    async _vim(file, sudoFlag, isSudo) {
-      if (!file) return `vim: missing file operand`;
-      if (sudoFlag && !isSudo) return `Permission denied: sudo needed for -s`;
-      const path = this._resolvePath(file);
-      const node = this._nodeRef(path);
-      const snap = await get(node);
-      if (snap.exists() && typeof snap.val()==="object") {
-        return `vim: cannot edit directory '${file}'`;
-      }
-      let existing = snap.exists() ? snap.val() : "";
-      if (!snap.exists()) {
-        await set(node, "");
-        if (sudoFlag) {
-          await set(ref(this.db, `${node._path}/__protected`), true);
-        }
-      }
-      const edited = await new Promise(res => {
-        const ov = document.createElement("div");
-        Object.assign(ov.style, {
-          position: "fixed", inset: 0,
-          backgroundColor: "rgba(0,0,0,0.85)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          zIndex: 2147483647
-        });
-        const box = document.createElement("div");
-        Object.assign(box.style, {
-          width: "80%", maxWidth: "800px", height: "80vh",
-          background: "#111", padding: "20px", borderRadius: "8px",
-          display: "flex", flexDirection: "column"
-        });
-        const ta = document.createElement("textarea");
-        ta.value = existing;
-        Object.assign(ta.style, {
-          flex: 1, background: "#222", color: "#eee",
-          border: "none", padding: "10px",
-          fontFamily: "monospace", fontSize: "0.9rem", resize: "none"
-        });
-        const ctr = document.createElement("div");
-        Object.assign(ctr.style, { textAlign: "right", marginTop: "10px" });
-        const cbtn = document.createElement("button");
-        cbtn.textContent = "Cancel";
-        cbtn.onclick = () => { ov.remove(); res(null); };
-        const sbtn = document.createElement("button");
-        sbtn.textContent = "Save";
-        sbtn.onclick = () => { ov.remove(); res(ta.value); };
-        ctr.append(cbtn, sbtn); box.append(ta, ctr); ov.append(box);
-        document.body.append(ov);
+    async _vim(file,sFlag,isSudo) {
+      if (!file) return `vim: missing operand`;
+      const p=this._resolvePath(file),
+            node=this._nodeRef(p),
+            snap=await get(node);
+      if (snap.exists()&&typeof snap.val()==="object")
+        return `vim: cannot edit directory: ${file}`;
+      const needsPwd=sFlag;
+      if (!await this._checkAccess(p,isSudo,needsPwd))
+        return `Permission denied or incorrect password`;
+      let existing = snap.exists()?snap.val():"";
+      await set(node, existing);
+      // overlay editor
+      const edited = await new Promise(res=> {
+        const ov=document.createElement("div");
+        Object.assign(ov.style,{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2147483647});
+        const box=document.createElement("div");
+        Object.assign(box.style,{width:"80%",maxWidth:"800px",height:"80vh",background:"#111",padding:"20px",borderRadius:"8px",display:"flex",flexDirection:"column"});
+        const ta=document.createElement("textarea"); ta.value=existing;
+        Object.assign(ta.style,{flex:1,background:"#222",color:"#eee",border:"none",padding:"10px",fontFamily:"monospace",resize:"none"});
+        const ctr=document.createElement("div"); Object.assign(ctr.style,{textAlign:"right",marginTop:"10px"});
+        const cbtn=document.createElement("button"); cbtn.textContent="Cancel"; cbtn.onclick=()=>{ov.remove();res(null)};
+        const sbtn=document.createElement("button"); sbtn.textContent="Save";   sbtn.onclick=()=>{ov.remove();res(ta.value)};
+        ctr.append(cbtn,sbtn); box.append(ta,ctr); ov.append(box); document.body.append(ov);
       });
-      if (edited === null) return `Editing canceled.`;
+      if (edited===null) return `Editing canceled.`;
       await set(node, edited);
       return `File '${file}' saved.`;
     }
   
     async _ban(email) {
       if (!email) return `ban: missing operand`;
-      const key = this._keyFromEmail(email);
-      await update(ref(this.db, "ban"), { [key]: true });
+      const key=this._keyFromEmail(email);
+      await update(ref(this.db,"ban"),{[key]:true});
       return `Banned '${email}'`;
     }
   
     async _unban(email) {
       if (!email) return `unban: missing operand`;
-      const key = this._keyFromEmail(email);
-      await remove(ref(this.db, `ban/${key}`));
+      const key=this._keyFromEmail(email);
+      await remove(ref(this.db,`ban/${key}`));
       return `Unbanned '${email}'`;
     }
   
     async _listBanned() {
-      const snap = await get(ref(this.db, "ban"));
+      const snap=await get(ref(this.db,"ban"));
       if (!snap.exists()) return `(no banned users)`;
-      return Object.keys(snap.val())
-        .map(k => this._emailFromKey(k))
-        .join("\n");
+      return Object.keys(snap.val()).map(k=>this._emailFromKey(k)).join("\n");
     }
   }
   

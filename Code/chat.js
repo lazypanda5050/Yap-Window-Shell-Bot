@@ -2044,7 +2044,6 @@
     const snap = await get(ref(database, `ban/${key}`));
     return snap.exists();
   }
-  
 
   async function sendMessage() {
     if (isSending) return;
@@ -2434,7 +2433,7 @@
           Date: Date.now()
         });
 
-        if (!isBanned(email)){
+        if (!isBanned(email, database)){
           const bannedMessageRef = push(messagesRef);
           await update(bannedMessageRef, {
             User: "[SHELL]",

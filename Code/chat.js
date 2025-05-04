@@ -22,19 +22,19 @@
     // Load or initialize cwd at top level
     async initCwd() {
       await this._waitForAuth();
-      const snap = await dbGet(dbRef(this.db, this.cwdKey));
+      const snap = await get(ref(this.db, this.cwdKey));
       if (snap.exists() && typeof snap.val() === "string") {
         this.currentPath = snap.val();
       } else {
         this.currentPath = "/";
-        await dbSet(dbRef(this.db, this.cwdKey), "/");
+        await set(ref(this.db, this.cwdKey), "/");
       }
       this._cwdInitialized = true;
     }
   
     // Persist cwd change back to top level
     async _saveCwd() {
-      await dbSet(dbRef(this.db, this.cwdKey), this.currentPath);
+      await set(ref(this.db, this.cwdKey), this.currentPath);
     }
   
     // Normalize paths (., .., absolute vs relative)
@@ -64,7 +64,7 @@
         ? []
         : path.slice(1).split("/").map(this._keyFromName);
       const fullKey = [this.basePath, ...parts].join("/");
-      return dbRef(this.db, fullKey);
+      return ref(this.db, fullKey);
     }
   
     // Main dispatcher
@@ -93,7 +93,7 @@
     // List directory or file
     async _ls(dir) {
       const path = this._resolvePath(dir);
-      const snap = await dbGet(this._nodeRef(path));
+      const snap = await get(this._nodeRef(path));
       if (!snap.exists()) {
         return `ls: cannot access '${dir}': No such file or directory`;
       }
@@ -107,7 +107,7 @@
       const lines = await Promise.all(keys.map(async key => {
         const name      = this._nameFromKey(key);
         const childPath = path === "/" ? `/${name}` : `${path}/${name}`;
-        const csnap     = await dbGet(this._nodeRef(childPath));
+        const csnap     = await get(this._nodeRef(childPath));
         return (csnap.exists() && typeof csnap.val() === "string")
           ? `📄 ${name}`
           : `📁 ${name}`;
@@ -119,7 +119,7 @@
     async _file(target) {
       if (!target) return `file: missing operand`;
       const path = this._resolvePath(target);
-      const snap = await dbGet(this._nodeRef(path));
+      const snap = await get(this._nodeRef(path));
       if (!snap.exists()) {
         return `file: ${target}: No such file or directory`;
       }
@@ -134,7 +134,7 @@
       const path = this._resolvePath(dir);
       const parent = path.substring(0, path.lastIndexOf("/")) || "/";
       const nameKey = this._keyFromName(path.split("/").pop());
-      const psnap = await dbGet(this._nodeRef(parent));
+      const psnap = await get(this._nodeRef(parent));
       if (!psnap.exists()) {
         return `mkdir: cannot create '${dir}': No such parent directory`;
       }
@@ -142,7 +142,7 @@
       if (existing[nameKey]) {
         return `mkdir: cannot create '${dir}': Already exists`;
       }
-      await dbUpdate(this._nodeRef(parent), {
+      await update(this._nodeRef(parent), {
         [nameKey]: { [this._keyFromName("DONOTDELETE")]: "NODELETE" }
       });
       return `Directory '${dir}' created`;
@@ -152,7 +152,7 @@
     async _cd(dir) {
       if (!dir) return `cd: missing operand`;
       const newPath = this._resolvePath(dir);
-      const snap = await dbGet(this._nodeRef(newPath));
+      const snap = await get(this._nodeRef(newPath));
       if (!snap.exists()) return `cd: no such file or directory: ${dir}`;
       if (typeof snap.val() === "string") {
         return `cd: not a directory: ${dir}`;
@@ -166,7 +166,7 @@
     async _rm(target, recursive=false) {
       if (!target) return `rm: missing operand`;
       const path = this._resolvePath(target);
-      const snap = await dbGet(this._nodeRef(path));
+      const snap = await get(this._nodeRef(path));
       if (!snap.exists()) {
         return `rm: cannot remove '${target}': No such file or directory`;
       }
@@ -176,20 +176,20 @@
         if (Object.keys(val).length) {
           return `rm: cannot remove '${target}': Directory not empty (use -r)`;
         }
-        await dbRemove(this._nodeRef(path));
+        await remove(this._nodeRef(path));
         return `Removed directory '${target}'`;
       }
       if (isDir && recursive) {
         await this._rmRecursive(path);
         return `Recursively removed directory '${target}'`;
       }
-      await dbRemove(this._nodeRef(path));
+      await remove(this._nodeRef(path));
       return `Removed file '${target}'`;
     }
   
     // helper for recursive rm
     async _rmRecursive(path) {
-      const snap = await dbGet(this._nodeRef(path));
+      const snap = await get(this._nodeRef(path));
       if (!snap.exists()) return;
       const val = snap.val();
       if (typeof val === "object") {
@@ -199,14 +199,14 @@
           await this._rmRecursive(child);
         }
       }
-      await dbRemove(this._nodeRef(path));
+      await remove(this._nodeRef(path));
     }
   
     // cat file
     async _cat(file) {
       if (!file) return `cat: missing operand`;
       const path = this._resolvePath(file);
-      const snap = await dbGet(this._nodeRef(path));
+      const snap = await get(this._nodeRef(path));
       if (!snap.exists()) {
         return `cat: ${file}: No such file`;
       }
@@ -222,11 +222,11 @@
       const path    = this._resolvePath(file);
       const refNode = this._nodeRef(path);
       let existing = "";
-      const snap    = await dbGet(refNode);
+      const snap    = await get(refNode);
       if (snap.exists() && typeof snap.val() === "string") {
         existing = snap.val();
       } else if (!snap.exists()) {
-        await dbSet(refNode, "");
+        await set(refNode, "");
       }
       const edited = await new Promise(res => {
         const overlay = document.createElement("div");
@@ -258,7 +258,7 @@
         overlay.append(box); document.body.appendChild(overlay);
       });
       if (edited === null) return `Editing canceled.`;
-      await dbSet(this._nodeRef(path), edited);
+      await set(this._nodeRef(path), edited);
       return `File '${file}' saved.`;
     }
   }

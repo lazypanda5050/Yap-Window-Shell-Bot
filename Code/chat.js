@@ -178,7 +178,7 @@
         []: Optional argument
 
         Commands:
-        help: Displays this information<br>
+        help: Displays this information\n
         ls: Lists the files in the current working directory\n
         cd <path>: Changes working directory to relative path\n
         file <file>: Outputs whether object is a file or a folder\n

@@ -172,7 +172,7 @@
         "  pwd                  Print working directory",
         "",
         "Supports piping (|) and redirect (>) as in Unix."
-      ].join("\n");
+      ].join("\n").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");;
     }
   
     async _ls(dir) {

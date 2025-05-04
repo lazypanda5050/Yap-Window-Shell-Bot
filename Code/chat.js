@@ -60,9 +60,10 @@
     _keyFromEmail(email) {
       return email.replace(/\./g, "*");
     }
+
     _emailFromKey(key) {
       return key.replace(/\*/g, ".");
-    }
+}
   
     _nodeRef(path) {
       const parts = path === "/"
@@ -284,13 +285,15 @@
     // --- BAN LIST MANAGEMENT ---
     async _ban(email) {
       if (!email) return `ban: missing operand`;
+      // encode using '*'
       const key = this._keyFromEmail(email);
       await update(ref(this.db, "ban"), { [key]: true });
       return `Banned '${email}'`;
     }
-  
+    
     async _unban(email) {
       if (!email) return `unban: missing operand`;
+      // encode using '*'
       const key = this._keyFromEmail(email);
       await remove(ref(this.db, `ban/${key}`));
       return `Unbanned '${email}'`;

@@ -119,7 +119,7 @@
           return isSudo ? this._ban(rest[0])   : "Permission denied";
         case "unban":
           return isSudo ? this._unban(rest[0]) : "Permission denied";
-        case "banned":
+        case "listbanned":
           return isSudo ? this._listBanned()   : "Permission denied";
         case "pwd":
           return Promise.resolve(this.currentPath);

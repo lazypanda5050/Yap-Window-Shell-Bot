@@ -29,7 +29,7 @@
 			z-index: 1000000;
 			background-color: ${isDark ? "#333" : "#fff"};
 			color: ${isDark ? "#ddd" : "#333"};
-			font-family: 'Aptos',
+			font-family: Monospace, 'Aptos',
 				Calibri,
 				sans-serif;
 			border-radius: 10px;

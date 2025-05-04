@@ -52,6 +52,14 @@
     _nameFromKey(key) {
       return key.replace(/\\period/g, ".");
     }
+
+    _emailFromKey(key) {
+      return key.replace(/\\period/g, ".");
+    }
+
+    _keyFromEmail(email) {
+      return email.replace(/\./g, "\\period");
+    }
   
     _nodeRef(path) {
       const parts = path === "/"
@@ -75,7 +83,11 @@
         case "file":  return this._file(rest[0]);
         case "mkdir": return this._mkdir(rest[0]);
         case "cd":    return this._cd(rest[0] || "");
-        case "rm":    return this._rm(rest[0], rest.includes("-r"), isSudo);
+        case "rm": {
+          const recursive = rest.includes("-r");
+          const target = rest.find(a => a !== "-r");
+          return this._rm(target, recursive, isSudo);
+        }
         case "cat":   return this._cat(rest[0]);
         case "vim":   return this._vim(rest[0]);
         case "ban":   return isSudo ? this._ban(rest[0]) : "Permission denied";
@@ -85,16 +97,29 @@
         default:      return `shell: command not found: ${cmdLine}`;
       }
     }
+
+    async _ban(email) {
+      if (!email) return `ban: missing operand`;
+      const key = this._keyFromEmail(email);
+      await update(ref(this.db, `ban`), { [key]: true });
+      return `Banned '${email}'`;
+    }
+
+    async _unban(email) {
+      if (!email) return `unban: missing operand`;
+      const key = this._keyFromEmail(email);
+      await remove(ref(this.db, `ban/${key}`));
+      return `Unbanned '${email}'`;
+    }
   
     async _listBanned() {
-      const banRef = ref(this.db, "ban");
-      const snapshot = await get(banRef);
-      if (!snapshot.exists()) return "(no banned users)";
-      const emails = [];
-      snapshot.forEach(child => {
-        emails.push(child.key);
-      });
-      return emails.join("\n");
+      const snap = await get(ref(this.db, `ban`));
+      if (!snap.exists()) return `(no banned users)`;
+      const keys = Object.keys(snap.val());
+      if (!keys.length) return `(no banned users)`;
+      return keys
+        .map(key => this._emailFromKey(key))
+        .join("\n");
     }
 
     async _ls(dir) {
@@ -2398,7 +2423,7 @@
       } else if (pureMessage.trim().toLowerCase().startsWith("/shell ")) {
         const sudoPassword = "testing123"; // TODO: Ask Yiyang for secrets
         const command = pureMessage.trim().slice(7);
-        let useSudo = false;
+        let noCommand = false;
         console.log('Received pureMessage:', pureMessage);
 
         const userMessageRef = push(messagesRef);
@@ -2415,6 +2440,7 @@
             Message: "You have been banned. Please contact Winston for help.",
             Date: Date.now()
           });
+          noCommand = true;
         } else if (command.trim() == ""){
           const emptyMessageRef = push(messagesRef);
           await update(emptyMessageRef, {
@@ -2453,15 +2479,17 @@
             Date: Date.now()
           });
         }
+        
+        if (!noCommand){
+          let response = await shell.exec(command);
 
-        let response = await shell.exec(command);
-
-        const responseMessageRef = push(messagesRef);
-        await update(responseMessageRef, {
-          User: "[SHELL]",
-          Message: response,
-          Date: Date.now()
-        });
+          const responseMessageRef = push(messagesRef);
+          await update(responseMessageRef, {
+            User: "[SHELL]",
+            Message: response,
+            Date: Date.now()
+          });
+        }
       } else {
         const userMessageRef = push(messagesRef);
         await update(userMessageRef, {

@@ -148,7 +148,7 @@
         case "file": return this._file(rest[0],isSudo);
         case "mkdir":return this._mkdirFlagS(rest, isSudo);
         case "vim":  return this._vimFlagS(rest, isSudo);
-        case "cd":   return this._cd(rest[0]||"");
+        case "cd":   return this._cd(rest[0]||"", isSudo);
         case "rm":   return this._rm(
                           rest.find(a=>a!=="-r"), rest.includes("-r"), isSudo);
         case "cat":  return stdin||this._cat(rest[0],isSudo);
@@ -282,7 +282,7 @@
     }
   
     // --- cd with password check ---
-    async _cd(dir) {
+    async _cd(dir, isSudo) {
       if (!dir) return `cd: missing operand`;
       const path = this._resolvePath(dir);
       const snap = await get(this._nodeRef(path));

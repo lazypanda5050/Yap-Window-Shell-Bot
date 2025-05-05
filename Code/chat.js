@@ -349,6 +349,10 @@
         return `rm: permission denied to remove password metadata`;
       }
 
+      if (path === "/") {
+        return `rm: cannot remove root directory`;
+      }
+
       if (!isSudo) {
         const pwdSnap = await get(this._pwRef(path));
         if (pwdSnap.exists()) {

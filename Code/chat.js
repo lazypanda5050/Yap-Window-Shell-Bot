@@ -345,6 +345,10 @@
         return `rm: permission denied to remove placeholder`;
       }
 
+      if (path === "/__PASSWORDS__" || path.startsWith("/__PASSWORDS__/")) {
+        return `rm: permission denied to remove password metadata`;
+      }
+
       if (!isSudo) {
         const pwdSnap = await get(this._pwRef(path));
         if (pwdSnap.exists()) {
@@ -356,32 +360,35 @@
       }
 
       const val = snap.val();
-      // If it’s a directory
+
       if (typeof val === "object") {
+        // directory case
         if (!recursive) {
           if (Object.keys(val).length) {
             return `rm: directory not empty (use -r)`;
           }
-          // remove directory node
+          // only remove this empty directory
           await remove(this._nodeRef(path));
         } else {
-          // recursive directory removal
+          // recursively delete each child + its pw entry
           await this._rmRecursive(path);
         }
+        // after directory delete, clean up its own pw entry
       } else {
-        // remove file node
+        // file case: only remove this file
         await remove(this._nodeRef(path));
       }
 
-      // --- New: remove the password entry if it exists ---
+      // clean up password metadata for exactly this path
       const pwdRef = this._pwRef(path);
-      const pwCheck = await get(pwdRef);
-      if (pwCheck.exists()) {
+      const pwSnap = await get(pwdRef);
+      if (pwSnap.exists()) {
         await remove(pwdRef);
       }
 
-      return (typeof val === "object")
-        ? `Removed ${recursive ? "directory" : "directory"} '${target}'`
+      // respond according to type
+      return typeof val === "object"
+        ? `Removed directory '${target}'`
         : `Removed file '${target}'`;
     }
 

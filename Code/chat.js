@@ -288,6 +288,10 @@
       const snap = await get(this._nodeRef(path));
       if (!snap.exists()) return `cd: no such file or dir: ${dir}`;
       if (typeof snap.val() === "string") return `cd: not a directory: ${dir}`;
+
+      if (this._isPwDir(path) && !isSudo) {
+        return `cd: permission denied to access metadata`;
+      }
   
       const pwdSnap = await get(this._pwRef(path));
       if (pwdSnap.exists()) {

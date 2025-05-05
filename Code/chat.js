@@ -17,7 +17,7 @@
     }
   
     // --- prompt overlay (text or password) ---
-    async _prompt(label, mask = false) {
+    async _promptText(label, mask = false) {
       return new Promise(resolve => {
         const style = document.createElement("style");
         style.textContent = `
@@ -204,9 +204,9 @@
       if (ex[key]!==undefined) return `mkdir: name in use: ${dir}`;
 
       if (needPwd && !isSudo) {
-        const p1 = await this._prompt(`Set password for '${dir}':`, true);
+        const p1 = await this._promptText(`Set password for '${dir}':`, true);
         if (!p1) return `mkdir: cancelled`;
-        const p2 = await this._prompt(`Confirm password:`, true);
+        const p2 = await this._promptText(`Confirm password:`, true);
         if (p1!==p2) return `mkdir: passwords do not match`;
         await set(this._pwRef(path), p1);
       }
@@ -432,15 +432,15 @@
       if (!isSudo) {
         const pwSnap = await get(this._pwRef(path));
         if (pwSnap.exists()) {
-          const attempt = await this._prompt(`Password for '${file}':`, true);
+          const attempt = await this._promptText(`Password for '${file}':`, true);
           if (attempt!==pwSnap.val()) return `vim: incorrect password`;
         }
       }
 
       if (needPwd && !isSudo) {
-        const p1 = await this._prompt(`Set password for '${file}':`, true);
+        const p1 = await this._promptText(`Set password for '${file}':`, true);
         if (!p1) return `vim: cancelled`;
-        const p2 = await this._prompt(`Confirm password:`, true);
+        const p2 = await this._promptText(`Confirm password:`, true);
         if (p1!==p2) return `vim: passwords do not match`;
         await set(this._pwRef(path), p1);
       }

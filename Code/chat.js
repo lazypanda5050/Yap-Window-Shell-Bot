@@ -12,62 +12,44 @@
       this._cwdInitialized = false;
     }
   
-    // --- Overlay prompt ---
-    async _promptText(label, mask = false) {
+    // --- prompt overlay (text or password) ---
+    async _prompt(label, mask = false) {
       return new Promise(resolve => {
         const style = document.createElement("style");
         style.textContent = `
-          #input-overlay {
-            position: fixed; inset:0;
-            background: rgba(0,0,0,0.7);
-            display: flex; align-items: center; justify-content: center;
-            z-index: 2147483647;
-          }
-          #input-box {
-            background: #222; padding: 20px; border-radius: 8px;
-            display: flex; flex-direction: column; color: #fff;
-            font-family: sans-serif; width: 300px;
-          }
-          #input-box input {
-            margin-top: 8px; padding: 8px; font-size: 1rem;
-            border: none; border-radius: 4px; background: #333; color: #fff;
-          }
-          #input-box .buttons {
-            margin-top: 12px; text-align: right;
-          }
-          #input-box button {
-            margin-left: 8px; padding: 6px 12px;
-            font-size: 1rem; border: none; border-radius: 4px;
-            cursor: pointer;
-          }
+          #input-overlay { position:fixed;inset:0;
+            background:rgba(0,0,0,0.7);
+            display:flex;align-items:center;justify-content:center;
+            z-index:2147483647; }
+          #input-box { background:#222;padding:20px;border-radius:8px;
+            display:flex;flex-direction:column;color:#fff;
+            font-family:sans-serif;width:300px; }
+          #input-box label { font-size:1rem; }
+          #input-box input { margin-top:8px;padding:8px;font-size:1rem;
+            border:none;border-radius:4px;background:#333;color:#fff; }
+          #input-box .buttons { margin-top:12px;text-align:right; }
+          #input-box button { margin-left:8px;padding:6px 12px;
+            font-size:1rem;border:none;border-radius:4px;cursor:pointer;}
         `;
         document.head.appendChild(style);
-  
-        const overlay = document.createElement("div");
-        overlay.id = "input-overlay";
-        const box = document.createElement("div");
-        box.id = "input-box";
-  
-        const labelEl = document.createElement("label");
-        labelEl.textContent = label;
-        const input = document.createElement("input");
-        input.type = mask ? "password" : "text";
-        const btns = document.createElement("div");
-        btns.className = "buttons";
-        const cancel = document.createElement("button");
-        cancel.textContent = "Cancel";
-        const ok = document.createElement("button");
-        ok.textContent = "OK";
-  
+
+        const overlay = document.createElement("div"); overlay.id = "input-overlay";
+        const box     = document.createElement("div"); box.id = "input-box";
+        const lbl     = document.createElement("label"); lbl.textContent = label;
+        const inp     = document.createElement("input"); inp.type = mask ? "password" : "text";
+        const btns    = document.createElement("div"); btns.className = "buttons";
+        const cancel  = document.createElement("button"); cancel.textContent = "Cancel";
+        const ok      = document.createElement("button"); ok.textContent = "OK";
+
         cancel.onclick = () => { cleanup(); resolve(null); };
-        ok.onclick     = () => { cleanup(); resolve(input.value); };
-  
+        ok.onclick     = () => { cleanup(); resolve(inp.value); };
+
         btns.append(cancel, ok);
-        box.append(labelEl, input, btns);
+        box.append(lbl, inp, btns);
         overlay.append(box);
         document.body.appendChild(overlay);
-        input.focus();
-  
+        inp.focus();
+
         function cleanup() {
           overlay.remove();
           style.remove();
@@ -75,16 +57,17 @@
       });
     }
   
-    // --- Auth guard + CWD persist ---
+    // --- Auth & CWD ---
     async _waitForAuth() {
-      const user = await this._authReady;
-      if (!user) throw new Error("Must be signed in");
-      return user;
+      const u = await this._authReady;
+      if (!u) throw new Error("Must be signed in");
+      return u;
     }
+
     async initCwd() {
       await this._waitForAuth();
       const snap = await get(ref(this.db, this.cwdKey));
-      if (snap.exists() && typeof snap.val() === "string") {
+      if (snap.exists() && typeof snap.val()==="string") {
         this.currentPath = snap.val();
       } else {
         this.currentPath = "/";
@@ -92,120 +75,86 @@
       }
       this._cwdInitialized = true;
     }
+    
     async _saveCwd() {
       await set(ref(this.db, this.cwdKey), this.currentPath);
     }
   
-    // --- Path & key helpers ---
+     // --- Path & key helpers ---
     _resolvePath(p) {
-      if (p.startsWith("/")) return p === "/" ? "/" : p.replace(/\/+$/, "");
+      if (p.startsWith("/")) return p === "/" ? "/" : p.replace(/\/+$/,"");
       const parts = this.currentPath.split("/").concat(p.split("/"));
       const stack = [];
-      for (let part of parts) {
-        if (!part || part === ".") continue;
-        if (part === "..") stack.pop();
+      for (const part of parts) {
+        if (!part||part===".") continue;
+        if (part==="..") stack.pop();
         else stack.push(part);
       }
-      return "/" + stack.join("/");
+      return "/"+stack.join("/");
     }
-    _keyName(n) { return n.replace(/\./g, "\\period"); }
-    _nameKey(k){ return k.replace(/\\period/g, "."); }
+
+    _keyName(n) { return n.replace(/\./g,"\\period"); }
+
+    _nameKey(k){ return k.replace(/\\period/g,"."); }
+
     _nodeRef(path) {
-      const parts = path === "/"
-        ? []
-        : path.slice(1).split("/").map(this._keyName);
+      const parts = path==="/"?[]:path.slice(1).split("/").map(this._keyName);
       return ref(this.db, [this.basePath, ...parts].join("/"));
     }
+
     _pwRef(path) {
-      // top-level __passwords__ under shellFS
-      const key = path === "/"
-        ? "__PASSWORDS__root"
-        : path.slice(1).split("/").map(this._keyName).join("/");
+      const key = path==="/"?"root":path.slice(1).split("/").map(this._keyName).join("/");
       return ref(this.db, `${this.basePath}/__PASSWORDS__/${key}`);
     }
   
-    // --- Main exec (pipes & redirect) ---
+     // --- Main exec (pipes & >) ---
     async exec(cmdLine) {
       await this._waitForAuth();
       if (!this._cwdInitialized) await this.initCwd();
-  
-      const segments = cmdLine.split("|").map(s => s.trim());
+
+      const segs = cmdLine.split("|").map(s=>s.trim());
       let input = "";
-      for (let i = 0; i < segments.length; i++) {
-        let seg = segments[i], redirect = null;
-        if (i === segments.length - 1) {
-          const m = seg.match(/(.*)>\s*(\S+)$/);
-          if (m) { seg = m[1].trim(); redirect = m[2]; }
+      for (let i=0;i<segs.length;i++) {
+        let s = segs[i], redir=null;
+        if (i===segs.length-1) {
+          const m = s.match(/(.*)>\s*(\S+)$/);
+          if (m) { s=m[1].trim(); redir=m[2]; }
         }
-        const out = await this._runSingle(seg, input);
+        const out = await this._run(s, input);
         input = out;
-        if (redirect) {
-          await set(this._nodeRef(this._resolvePath(redirect)), input);
+        if (redir) {
+          await set(this._nodeRef(this._resolvePath(redir)), input);
         }
       }
       return input;
     }
-  
-    // --- Dispatch single command ---
-    async _runSingle(segment, stdin) {
+
+    // --- Dispatch ---
+    async _run(segment, stdin) {
       const [cmd, ...args] = segment.split(/\s+/);
-      const isSudo = cmd === "sudo";
-      const action = isSudo ? args.shift() : cmd;
-      const rest   = isSudo ? args : args;
-  
+      const isSudo = cmd==="sudo";
+      const action = isSudo?args.shift():cmd;
+      const rest   = isSudo?args:args;
+
       switch (action) {
-        case "echo":
-          return rest.length ? rest.join(" ") : stdin;
-  
-        case "cp":
-          return this._cp(rest[0], rest[1]);
-  
-        case "mv":
-          return this._mv(rest[0], rest[1]);
-  
-        case "ls":
-          return this._ls(rest[0]||"", isSudo);
-  
-        case "file":
-          return this._file(rest[0], isSudo);
-  
-        case "mkdir":
-          return this._mkdir(rest[0], rest.includes("-s"), isSudo);
-  
-        case "cd":
-          return this._cd(rest[0]||"");
-  
-        case "rm":
-          return this._rm(
-            rest.find(arg => arg !== "-r"),
-            rest.includes("-r"),
-            isSudo
-          );
-  
-        case "cat":
-          return stdin || this._cat(rest[0], isSudo);
-  
-        case "vim":
-          return this._vim(rest[0], rest.includes("-s"), isSudo);
-  
-        case "ban":
-          return this._ban(rest[0]);
-  
-        case "unban":
-          return this._unban(rest[0]);
-  
-        case "listbanned":
-          return this._listBanned();
-  
+        case "echo": return rest.length?rest.join(" "):stdin;
+        case "cp":   return this._cp(rest[0],rest[1]);
+        case "mv":   return this._mv(rest[0],rest[1]);
+        case "ls":   return this._ls(rest[0]||"",isSudo);
+        case "file": return this._file(rest[0],isSudo);
+        case "mkdir":return this._mkdirFlagS(rest, isSudo);
+        case "vim":  return this._vimFlagS(rest, isSudo);
+        case "cd":   return this._cd(rest[0]||"");
+        case "rm":   return this._rm(
+                          rest.find(a=>a!=="-r"), rest.includes("-r"), isSudo);
+        case "cat":  return stdin||this._cat(rest[0],isSudo);
+        case "ban":  return this._ban(rest[0]);
+        case "unban":return this._unban(rest[0]);
+        case "listbanned": return this._listBanned();
         case "help":
-        case "-h":
-          return this._help();
-  
-        case "pwd":
-          return this.currentPath;
-  
-        default:
-          return `shell: command not found: ${action}`;
+        case "-h":   return this._help();
+        case "pwd":  return this.currentPath;
+        default:     return `shell: command not found: ${action}`;
       }
     }
   
@@ -233,32 +182,35 @@
       ].join("\n");
     }
   
-    // --- mkdir with per-node password stored in Firebase ---
+    // --- mkdir with -s prefix ---
+    async _mkdirFlagS(args, isSudo) {
+      const needPwd = args[0]==="-s";
+      const dir     = needPwd?args[1]:args[0];
+      return this._mkdir(dir, needPwd, isSudo);
+    }
+
     async _mkdir(dir, needPwd, isSudo) {
       if (!dir) return `mkdir: missing operand`;
       const path   = this._resolvePath(dir);
-      const parent = path.substring(0, path.lastIndexOf("/")) || "/";
-      const name   = path.split("/").pop();
-      const key    = this._keyName(name);
-  
-      const psnap = await get(this._nodeRef(parent));
+      const parent = path.substring(0,path.lastIndexOf("/"))||"/";
+      const key    = this._keyName(path.split("/").pop());
+      const psnap  = await get(this._nodeRef(parent));
       if (!psnap.exists()) return `mkdir: parent not found: ${dir}`;
-      const ex = psnap.val() || {};
-      if (ex[key] !== undefined) return `mkdir: name in use: ${dir}`;
-  
+      const ex = psnap.val()||{};
+      if (ex[key]!==undefined) return `mkdir: name in use: ${dir}`;
+
       if (needPwd && !isSudo) {
-        // prompt and store
-        const pwd1 = await this._promptText(`Set password for '${dir}':`, true);
-        if (!pwd1) return `mkdir: cancelled`;
-        const pwd2 = await this._promptText(`Confirm password:`, true);
-        if (pwd1 !== pwd2) return `mkdir: passwords do not match`;
-        await set(this._pwRef(path), pwd1);
+        const p1 = await this._prompt(`Set password for '${dir}':`, true);
+        if (!p1) return `mkdir: cancelled`;
+        const p2 = await this._prompt(`Confirm password:`, true);
+        if (p1!==p2) return `mkdir: passwords do not match`;
+        await set(this._pwRef(path), p1);
       }
-  
+
       await update(this._nodeRef(parent), {
         [key]: { [this._keyName("DONOTDELETE")]: "NODELETE" }
       });
-      return `Directory '${dir}' created${needPwd ? " (password‑protected)" : ""}`;
+      return `Directory '${dir}' created${needPwd?" (password‑protected)":""}`;
     }
   
     // --- ls with password check via Firebase ---
@@ -402,6 +354,7 @@
       await remove(this._nodeRef(path));
       return `Removed file '${target}'`;
     }
+
     async _rmRecursive(path) {
       const snap = await get(this._nodeRef(path));
       if (!snap.exists()) return;
@@ -439,75 +392,73 @@
       return snap.val();
     }
   
-    // --- vim with per-node password setup ---
+    // --- vim with -s prefix ---
+    async _vimFlagS(args, isSudo) {
+      const needPwd = args[0]==="-s";
+      const file    = needPwd?args[1]:args[0];
+      return this._vim(file, needPwd, isSudo);
+    }
+    
     async _vim(file, needPwd, isSudo) {
       if (!file) return `vim: missing operand`;
       const path = this._resolvePath(file);
       const node = this._nodeRef(path);
       const snap = await get(node);
-  
-      if (snap.exists() && typeof snap.val() === "object") {
+
+      if (snap.exists()&&typeof snap.val()==="object")
         return `vim: cannot edit directory: ${file}`;
-      }
-  
+
       if (!isSudo) {
-        const pwdSnap = await get(this._pwRef(path));
-        if (pwdSnap.exists()) {
-          const attempt = await this._promptText(`Password for '${file}':`, true);
-          if (attempt !== pwdSnap.val()) {
-            return `vim: incorrect password`;
-          }
+        const pwSnap = await get(this._pwRef(path));
+        if (pwSnap.exists()) {
+          const attempt = await this._prompt(`Password for '${file}':`, true);
+          if (attempt!==pwSnap.val()) return `vim: incorrect password`;
         }
       }
-  
+
       if (needPwd && !isSudo) {
-        const pwd1 = await this._promptText(`Set password for '${file}':`, true);
-        if (!pwd1) return `vim: cancelled`;
-        const pwd2 = await this._promptText(`Confirm password:`, true);
-        if (pwd1 !== pwd2) return `vim: passwords do not match`;
-        await set(this._pwRef(path), pwd1);
+        const p1 = await this._prompt(`Set password for '${file}':`, true);
+        if (!p1) return `vim: cancelled`;
+        const p2 = await this._prompt(`Confirm password:`, true);
+        if (p1!==p2) return `vim: passwords do not match`;
+        await set(this._pwRef(path), p1);
       }
-  
-      let existing = snap.exists() ? snap.val() : "";
+
+      let existing = snap.exists()?snap.val():"";
       await set(node, existing);
-  
-      // Overlay editor
+
+      // Editor overlay...
       const edited = await new Promise(res => {
         const ov = document.createElement("div");
-        Object.assign(ov.style, {
-          position: "fixed", inset: 0,
-          background: "rgba(0,0,0,0.85)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          zIndex: 2147483647
+        Object.assign(ov.style,{
+          position:"fixed",inset:0,
+          background:"rgba(0,0,0,0.85)",
+          display:"flex",alignItems:"center",justifyContent:"center",
+          zIndex:2147483647
         });
         const box = document.createElement("div");
-        Object.assign(box.style, {
-          width: "80%", maxWidth: "800px", height: "80vh",
-          background: "#111", padding: "20px", borderRadius: "8px",
-          display: "flex", flexDirection: "column"
+        Object.assign(box.style,{
+          width:"80%",maxWidth:"800px",height:"80vh",
+          background:"#111",padding:"20px",borderRadius:"8px",
+          display:"flex",flexDirection:"column"
         });
         const ta = document.createElement("textarea");
         ta.value = existing;
-        Object.assign(ta.style, {
-          flex: 1, background: "#222", color: "#eee",
-          border: "none", padding: "10px",
-          fontFamily: "monospace", resize: "none"
+        Object.assign(ta.style,{
+          flex:1,background:"#222",color:"#eee",
+          border:"none",padding:"10px",fontFamily:"monospace",resize:"none"
         });
         const ctr = document.createElement("div");
-        Object.assign(ctr.style, { textAlign: "right", marginTop: "10px" });
+        Object.assign(ctr.style,{textAlign:"right",marginTop:"10px"});
         const cbtn = document.createElement("button");
-        cbtn.textContent = "Cancel";
-        cbtn.onclick = () => { ov.remove(); res(null); };
+        cbtn.textContent = "Cancel"; cbtn.onclick = ()=>{ov.remove();res(null)};
         const sbtn = document.createElement("button");
-        sbtn.textContent = "Save";
-        sbtn.onclick = () => { ov.remove(); res(ta.value); };
-        ctr.append(cbtn, sbtn);
-        box.append(ta, ctr);
-        ov.append(box);
+        sbtn.textContent = "Save";   sbtn.onclick = ()=>{ov.remove();res(ta.value)};
+        ctr.append(cbtn, sbtn); box.append(ta, ctr); ov.append(box);
         document.body.append(ov);
       });
-  
-      if (edited === null) return `vim: editing canceled`;
+
+      if (edited===null) return `vim: editing canceled`;
       await set(node, edited);
       return `File '${file}' saved.`;
     }
@@ -519,12 +470,14 @@
       await update(ref(this.db, "ban"), { [key]: true });
       return `Banned '${email}'`;
     }
+
     async _unban(email) {
       if (!email) return `unban: missing operand`;
       const key = this._keyEmail(email);
       await remove(ref(this.db, `ban/${key}`));
       return `Unbanned '${email}'`;
     }
+
     async _listBanned() {
       const snap = await get(ref(this.db, "ban"));
       if (!snap.exists()) return `(no banned users)`;

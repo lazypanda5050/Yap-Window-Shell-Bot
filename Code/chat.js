@@ -11,6 +11,10 @@
       );
       this._cwdInitialized = false;
     }
+
+    _isPwDir(path) {
+      return path === "/__PASSWORDS__" || path.startsWith("/__PASSWORDS__/");
+    }
   
     // --- prompt overlay (text or password) ---
     async _prompt(label, mask = false) {
@@ -218,6 +222,11 @@
       const path = this._resolvePath(dir);
       const snap = await get(this._nodeRef(path));
       if (!snap.exists()) return `ls: no such file or dir: ${dir}`;
+
+      // block metadata unless sudo
+      if (this._isPwDir(path) && !isSudo) {
+        return `ls: permission denied to access metadata`;
+      }
   
       if (!isSudo) {
         const pwdSnap = await get(this._pwRef(path));
@@ -252,6 +261,10 @@
       const path = this._resolvePath(target);
       const snap = await get(this._nodeRef(path));
       if (!snap.exists()) return `file: no such file or dir: ${target}`;
+
+      if (this._isPwDir(path) && !isSudo) {
+        return `file: permission denied to access metadata`;
+      }
   
       if (!isSudo) {
         const pwdSnap = await get(this._pwRef(path));
@@ -375,6 +388,10 @@
       const path = this._resolvePath(file);
       const snap = await get(this._nodeRef(path));
       if (!snap.exists()) return `cat: no such file: ${file}`;
+
+      if (this._isPwDir(path) && !isSudo) {
+        return `cat: permission denied to access metadata`;
+      }
   
       if (!isSudo) {
         const pwdSnap = await get(this._pwRef(path));
@@ -4088,9 +4105,9 @@
         const memberElement = document.createElement("div");
         memberElement.className = "selected-member";
         memberElement.innerHTML = `
-    ${member.email}
-    <span class="remove-member">×</span>
-`;
+            ${member.email}
+            <span class="remove-member">×</span>
+        `;
 
         memberElement.querySelector(".remove-member").onclick = () => {
           memberElement.remove();

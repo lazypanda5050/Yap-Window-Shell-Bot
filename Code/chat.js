@@ -339,12 +339,12 @@
       const path = this._resolvePath(target);
       const snap = await get(this._nodeRef(path));
       if (!snap.exists()) return `rm: no such file or dir: ${target}`;
-  
+
       // Prevent placeholder removal
       if (path.split("/").pop() === this._keyName("DONOTDELETE") && !isSudo) {
         return `rm: permission denied to remove placeholder`;
       }
-  
+
       if (!isSudo) {
         const pwdSnap = await get(this._pwRef(path));
         if (pwdSnap.exists()) {
@@ -354,22 +354,35 @@
           }
         }
       }
-  
+
       const val = snap.val();
+      // If it’s a directory
       if (typeof val === "object") {
         if (!recursive) {
           if (Object.keys(val).length) {
             return `rm: directory not empty (use -r)`;
           }
+          // remove directory node
           await remove(this._nodeRef(path));
-          return `Removed directory '${target}'`;
+        } else {
+          // recursive directory removal
+          await this._rmRecursive(path);
         }
-        await this._rmRecursive(path);
-        return `Recursively removed directory '${target}'`;
+      } else {
+        // remove file node
+        await remove(this._nodeRef(path));
       }
-  
-      await remove(this._nodeRef(path));
-      return `Removed file '${target}'`;
+
+      // --- New: remove the password entry if it exists ---
+      const pwdRef = this._pwRef(path);
+      const pwCheck = await get(pwdRef);
+      if (pwCheck.exists()) {
+        await remove(pwdRef);
+      }
+
+      return (typeof val === "object")
+        ? `Removed ${recursive ? "directory" : "directory"} '${target}'`
+        : `Removed file '${target}'`;
     }
 
     async _rmRecursive(path) {
@@ -379,12 +392,20 @@
       if (typeof val === "object") {
         for (const k of Object.keys(val)) {
           const nm = this._nameKey(k);
-          const cp = path === "/" ? `/${nm}` : `${path}/${nm}`;
-          await this._rmRecursive(cp);
+          const childPath = path === "/" ? `/${nm}` : `${path}/${nm}`;
+          await this._rmRecursive(childPath);
         }
       }
+      // delete the node
       await remove(this._nodeRef(path));
-    }
+      
+      // --- New: also remove its password entry ---
+      const pwdRef = this._pwRef(path);
+      const pwCheck = await get(pwdRef);
+      if (pwCheck.exists()) {
+        await remove(pwdRef);
+      }
+    }    
   
     // --- cat with password ---
     async _cat(file, isSudo) {

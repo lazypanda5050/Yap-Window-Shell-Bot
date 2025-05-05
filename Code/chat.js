@@ -101,6 +101,16 @@
 
     _nameKey(k){ return k.replace(/\\period/g,"."); }
 
+    _emailKey(key) {
+      // Converts "user*name@example*com" → "user.name@example.com"
+      return key.replace(/\*/g, ".");
+    }
+
+    _keyEmail(email) {
+      // Converts "user.name@example.com" → "user*name@example*com"
+      return email.replace(/\./g, "*");
+    }
+
     _nodeRef(path) {
       const parts = path==="/"?[]:path.slice(1).split("/").map(this._keyName);
       return ref(this.db, [this.basePath, ...parts].join("/"));

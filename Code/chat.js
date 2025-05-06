@@ -2818,6 +2818,7 @@
             Message: "No command executed",
             Date: Date.now()
           });
+          noCommand = true;
         }
         
         if (!noCommand){
